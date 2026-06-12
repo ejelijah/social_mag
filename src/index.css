@@ -1,0 +1,232 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Google Fonts ──────────────────────────────────────────────────────────── */
+/* Inter loaded via index.html */
+
+@theme inline {
+  --color-background: oklch(0.08 0.01 260);
+  --color-foreground: oklch(0.97 0.005 260);
+  --color-card: oklch(0.11 0.012 260);
+  --color-card-foreground: oklch(0.97 0.005 260);
+  --color-popover: oklch(0.11 0.012 260);
+  --color-popover-foreground: oklch(0.97 0.005 260);
+  --color-primary: oklch(0.72 0.19 280);
+  --color-primary-foreground: oklch(0.08 0.01 260);
+  --color-secondary: oklch(0.16 0.015 260);
+  --color-secondary-foreground: oklch(0.97 0.005 260);
+  --color-muted: oklch(0.16 0.015 260);
+  --color-muted-foreground: oklch(0.55 0.02 260);
+  --color-accent: oklch(0.72 0.19 280);
+  --color-accent-foreground: oklch(0.08 0.01 260);
+  --color-destructive: oklch(0.65 0.22 25);
+  --color-destructive-foreground: oklch(0.97 0.005 260);
+  --color-border: oklch(0.2 0.015 260);
+  --color-input: oklch(0.16 0.015 260);
+  --color-ring: oklch(0.72 0.19 280);
+
+  /* Custom brand colors */
+  --color-brand: oklch(0.72 0.19 280);
+  --color-brand-dim: oklch(0.55 0.16 280);
+  --color-surface: oklch(0.13 0.012 260);
+  --color-surface-raised: oklch(0.16 0.015 260);
+  --color-surface-overlay: oklch(0.2 0.015 260);
+
+  /* Platform colors */
+  --color-twitter: oklch(0.2 0 0);
+  --color-linkedin: oklch(0.42 0.14 240);
+  --color-instagram: oklch(0.6 0.22 340);
+  --color-snapchat: oklch(0.95 0.18 95);
+  --color-youtube: oklch(0.55 0.22 25);
+  --color-tiktok: oklch(0.2 0 0);
+
+  --radius: 0.75rem;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    @apply antialiased;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background-image: radial-gradient(
+        ellipse 80% 50% at 50% -20%,
+        oklch(0.72 0.19 280 / 0.08),
+        transparent
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 80% 80%,
+        oklch(0.55 0.16 280 / 0.04),
+        transparent
+      );
+    background-attachment: fixed;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.3 0.02 260);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.4 0.02 260);
+  }
+
+  /* Selection */
+  ::selection {
+    background: oklch(0.72 0.19 280 / 0.3);
+    color: oklch(0.97 0.005 260);
+  }
+}
+
+/* ─── Container ─────────────────────────────────────────────────────────────── */
+.container {
+  @apply mx-auto px-4 sm:px-6 lg:px-8;
+  max-width: 1280px;
+}
+
+/* ─── Flex defaults ──────────────────────────────────────────────────────────── */
+.flex {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ─── Glass morphism ─────────────────────────────────────────────────────────── */
+.glass {
+  background: oklch(0.11 0.012 260 / 0.8);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid oklch(0.25 0.015 260 / 0.6);
+}
+
+.glass-subtle {
+  background: oklch(0.13 0.012 260 / 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid oklch(0.2 0.015 260 / 0.4);
+}
+
+/* ─── Gradient text ──────────────────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    oklch(0.85 0.15 280),
+    oklch(0.72 0.19 280),
+    oklch(0.6 0.22 300)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Glow effects ───────────────────────────────────────────────────────────── */
+.glow-primary {
+  box-shadow: 0 0 24px oklch(0.72 0.19 280 / 0.25),
+    0 0 48px oklch(0.72 0.19 280 / 0.1);
+}
+
+.glow-primary-sm {
+  box-shadow: 0 0 12px oklch(0.72 0.19 280 / 0.2);
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.16 0.015 260) 25%,
+    oklch(0.22 0.018 260) 50%,
+    oklch(0.16 0.015 260) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px oklch(0.72 0.19 280 / 0.3); }
+  50% { box-shadow: 0 0 24px oklch(0.72 0.19 280 / 0.6); }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ─── Card styles ────────────────────────────────────────────────────────────── */
+.card-premium {
+  background: linear-gradient(
+    135deg,
+    oklch(0.13 0.012 260),
+    oklch(0.11 0.01 260)
+  );
+  border: 1px solid oklch(0.22 0.015 260);
+  border-radius: var(--radius);
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+.card-premium:hover {
+  border-color: oklch(0.35 0.02 280);
+  box-shadow: 0 8px 32px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(0.35 0.02 280 / 0.3);
+  transform: translateY(-1px);
+}
+
+/* ─── Platform badge colors ──────────────────────────────────────────────────── */
+.platform-twitter { background: oklch(0.2 0 0); color: white; }
+.platform-linkedin { background: oklch(0.42 0.14 240); color: white; }
+.platform-instagram { background: linear-gradient(135deg, oklch(0.6 0.22 340), oklch(0.65 0.2 30)); color: white; }
+.platform-snapchat { background: oklch(0.92 0.18 95); color: oklch(0.1 0 0); }
+.platform-youtube { background: oklch(0.55 0.22 25); color: white; }
+.platform-tiktok { background: oklch(0.15 0 0); color: white; }
+
+/* ─── Button active state ────────────────────────────────────────────────────── */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* ─── Focus ring ─────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid oklch(0.72 0.19 280 / 0.7);
+  outline-offset: 2px;
+}
+
+/* ─── Sidebar nav active ─────────────────────────────────────────────────────── */
+.nav-item-active {
+  background: oklch(0.72 0.19 280 / 0.12);
+  color: oklch(0.85 0.12 280);
+  border-right: 2px solid oklch(0.72 0.19 280);
+}
+
+/* ─── Prose override for dark theme ─────────────────────────────────────────── */
+.prose {
+  --tw-prose-body: oklch(0.85 0.01 260);
+  --tw-prose-headings: oklch(0.97 0.005 260);
+  --tw-prose-code: oklch(0.72 0.19 280);
+}
