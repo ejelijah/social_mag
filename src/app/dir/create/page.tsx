@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { getTrendingTopics } from "./actions";
 
 // FIX: Using client-side supabase client instead of server
 import { createClient } from "@/utils/supabase/client";
@@ -79,30 +80,12 @@ export default function CreateContent() {
         const { data: accounts } = await supabase
           .from('social_accounts')
           .select('*')
-          .eq('isConnected', true);
+          .eq('is_connected', true);
         
         if (accounts) setConnectedPlatforms(accounts);
 
-        // 2. Fetch Trending Topics from Grok (xAI)
-        const grokResponse = await fetch("https://api.x./v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "grok-beta",
-            messages: [
-              { role: "system", content: "Return a JSON array of 5 current trending social media topics. Format: [{id: 1, topic: 'Topic Name', category: 'Category'}]" },
-              { role: "user", content: "What is trending right now?" }
-            ],
-            response_format: { type: "json_object" }
-          }),
-        });
-
-        const grokData = await grokResponse.json();
         // Assuming Grok returns the array in a field called 'topics'
-        const topics = JSON.parse(grokData.choices[0].message.content).topics || [];
+        const topics = await getTrendingTopics();
         setTrending(topics);
       } catch (error) {
         console.error("Fetch error:", error);

@@ -3,7 +3,6 @@
 import AppLayout from "@/components/ui/AppLayout";
 import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -15,12 +14,13 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 
 const PLATFORMS = {
-  twitter: { name: "Twitter" },
+  twitter: { name: "twitter" },
   linkedin: { name: "LinkedIn" },
   instagram: { name: "Instagram" },
   snapchat: { name: "Snapchat" },
@@ -49,15 +49,13 @@ const PLATFORM_BG: Record<string, string> = {
 };
 
 export default function AccountsPage() {
-  const [connectingPlatform, setConnectingPlatform] = useState<Platform | null>(null);
-  const [username, setUsername] = useState("");
+  const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionPending, setIsActionPending] = useState(false);
 
   const supabase = createClient();
 
-  // 1. Fetch Function (Manual Supabase call)
   const fetchAccountsData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -71,7 +69,7 @@ export default function AccountsPage() {
       if (accError) throw accError;
 
       const { data: profile, error: profError } = await supabase
-        .from("profiles")
+        .from("users")
         .select("plan, platform_limit")
         .eq("id", user.id)
         .single();
@@ -80,8 +78,8 @@ export default function AccountsPage() {
 
       setData({
         accounts: accounts || [],
-        plan: profile?.plan || "free",
-        platformLimit: profile?.platform_limit || 2,
+        plan: profile?.plan ?? "free",
+        platformLimit: profile?.platform_limit ?? 2,
       });
     } catch (error: any) {
       toast.error(error.message);
@@ -94,49 +92,18 @@ export default function AccountsPage() {
     fetchAccountsData();
   }, [fetchAccountsData]);
 
-  // 2. Connect Function
-  async function handleConnect(platform: Platform) {
-    if (!username.trim()) return toast.error("Enter your username");
-    
-    setIsActionPending(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from("social_accounts")
-        .upsert({
-          user_id: user?.id,
-          platform,
-          platformUsername: username,
-          isConnected: true,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) throw error;
-
-      toast.success("Account connected!");
-      setConnectingPlatform(null);
-      setUsername("");
-      await fetchAccountsData(); // Refresh data
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setIsActionPending(false);
-    }
-  }
-
-  // 3. Disconnect Function
   async function handleDisconnect(platform: Platform) {
     setIsActionPending(true);
     try {
       const { error } = await supabase
         .from("social_accounts")
-        .update({ isConnected: false })
+        .update({ is_connected: false }) // Use snake_case
         .eq("platform", platform);
 
       if (error) throw error;
 
       toast.success("Account disconnected");
-      await fetchAccountsData(); // Refresh data
+      await fetchAccountsData();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -145,10 +112,9 @@ export default function AccountsPage() {
   }
 
   const platforms = Object.keys(PLATFORMS) as Platform[];
-  const connectedAccounts = data?.accounts.filter((a: any) => a.isConnected) ?? [];
+  const connectedAccounts = data?.accounts.filter((a: any) => a.is_connected) ?? [];
   const isPro = data?.plan === "pro";
   const platformLimit = data?.platformLimit ?? 2;
-
   return (
     <AppLayout title="Connected Accounts">
       <div className="p-6 space-y-6">
@@ -207,9 +173,10 @@ export default function AccountsPage() {
             {platforms.map((platform) => {
               const info = PLATFORMS[platform];
               const account = data?.accounts.find((a: any) => a.platform === platform);
-              const isConnected = account?.isConnected ?? false;
-              const isConnecting = connectingPlatform === platform;
-              const isLocked = !isPro && !isConnected && connectedAccounts.length >= platformLimit;
+              
+              // Correctly check connection using camelCase
+              const is_connected = account?.is_connected ?? false;
+              const isLocked = !isPro && !is_connected && connectedAccounts.length >= platformLimit;
 
               return (
                 <div
@@ -229,7 +196,7 @@ export default function AccountsPage() {
                     >
                       {PLATFORM_ICONS[platform]}
                     </div>
-                    {isConnected && (
+                    {is_connected && (
                       <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-[10px]">
                         <Check className="w-2.5 h-2.5 mr-1" />
                         Connected
@@ -244,11 +211,12 @@ export default function AccountsPage() {
 
                   <h3 className="font-semibold mb-1">{info.name}</h3>
 
-                  {isConnected && account ? (
+                  {is_connected ? (
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs text-muted-foreground">
-                          @{account.platformUsername}
+                        <p className="text-xs text-muted-foreground text-black">
+                          {/* Fallback to 'Connected' if username isn't available yet */}
+                          @{account?.platformUsername || 'Connected'}
                         </p>
                       </div>
                       <Button
@@ -266,39 +234,6 @@ export default function AccountsPage() {
                         Disconnect
                       </Button>
                     </div>
-                  ) : isConnecting ? (
-                    <div className="space-y-2">
-                      <Input
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder={`Your ${info.name} username`}
-                        className="bg-surface-raised border-border text-sm h-8"
-                        onKeyDown={(e) => e.key === "Enter" && handleConnect(platform)}
-                        autoFocus
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleConnect(platform)}
-                          disabled={isActionPending}
-                          className="flex-1 text-xs h-8"
-                        >
-                          {isActionPending ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            "Connect"
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { setConnectingPlatform(null); setUsername(""); }}
-                          className="text-xs h-8"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
                   ) : (
                     <div className="space-y-3">
                       <p className="text-xs text-muted-foreground">Not connected</p>
@@ -310,8 +245,7 @@ export default function AccountsPage() {
                             toast.error("Upgrade to Pro to connect more platforms");
                             return;
                           }
-                          setConnectingPlatform(platform);
-                          setUsername("");
+                          router.push(`/api/oauth/${platform}/login`);
                         }}
                         disabled={isLocked}
                         className="w-full text-xs h-8 gap-2"
@@ -330,3 +264,5 @@ export default function AccountsPage() {
     </AppLayout>
   );
 }
+
+
