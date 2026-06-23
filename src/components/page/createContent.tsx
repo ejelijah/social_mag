@@ -1,6 +1,6 @@
 "use client";
 
-import AppLayout from "@/app/ui/AppLayout";
+import AppLayout from "@/components/ui/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
