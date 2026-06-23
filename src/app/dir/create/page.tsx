@@ -18,12 +18,11 @@ import {
   TrendingUp,
   Trash2,
   Wand2,
+  Video,
+  FileText,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { getTrendingTopics } from "./actions";
-
-// FIX: Using client-side supabase client instead of server
 import { createClient } from "@/utils/supabase/client";
 
 const PLATFORMS = {
@@ -39,44 +38,56 @@ type Platform = keyof typeof PLATFORMS;
 
 export default function CreateContent() {
   const supabase = createClient();
-  
-  // UI State
+
+  const [userName, setUserName] = useState("Elijah");
   const [topic, setTopic] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "multi">("multi");
-  const [selectedTrending, setSelectedTrending] = useState<string | null>(null);
+  
+  // NEW: State to track what the user wants to generate
+  const [generateTypes, setGenerateTypes] = useState<string[]>(["text", "image"]); 
+  
   const [generatedPost, setGeneratedPost] = useState<{
     id: string | number;
     content: string;
     hashtags: string[];
     imageUrl?: string | null;
-    imagePrompt?: string | null;
+    mediaPath?: string;
+    mediaType?: 'image' | 'video';
     platform: string;
-  } | null>({
-    id: 0,
-    content: "",
-    hashtags: [],
-    platform: ""
-  });
+  } | null>(null);
+  
   const [editedContent, setEditedContent] = useState("");
   const [selectedPublishPlatforms, setSelectedPublishPlatforms] = useState<string[]>([]);
   const [showScheduler, setShowScheduler] = useState(false);
-
-  // Data State
   const [trending, setTrending] = useState<any[]>([]);
   const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([]);
+  
   const [isLoading, setIsLoading] = useState({
     trending: true,
     generating: false,
-    image: false,
+    media: false,
     saving: false,
     publishing: false
   });
 
-  // Fetch Grok Trending Topics & Social Accounts
+  const platformLimit = 280;
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Fetch Social Accounts from Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.name) {
+            setUserName(profile.name.split(' ')[0]);
+          }
+        }
+
         const { data: accounts } = await supabase
           .from('social_accounts')
           .select('*')
@@ -84,135 +95,110 @@ export default function CreateContent() {
         
         if (accounts) setConnectedPlatforms(accounts);
 
-        // Assuming Grok returns the array in a field called 'topics'
-        const topics = await getTrendingTopics();
-        setTrending(topics);
+        const { data: trendData, error: trendError } = await supabase.functions.invoke('get-trending');
+        if (trendError) throw trendError;
+        if (trendData?.topics) setTrending(trendData.topics);
+
       } catch (error) {
         console.error("Fetch error:", error);
-        toast.error("Failed to load trending topics");
       } finally {
         setIsLoading(prev => ({ ...prev, trending: false }));
       }
     };
-
     fetchData();
-  }, []);
+  }, [supabase]);
 
-  // Handlers
-  async function handleGenerate() {
+  // Toggle selection for Text, Image, or Video
+  const toggleType = (type: string) => {
+    setGenerateTypes(prev => 
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  async function handleOmniGenerate() {
     if (!topic.trim()) return toast.error("Enter a topic first");
+    if (generateTypes.length === 0) return toast.error("Select what to generate (Text/Image/Video)");
+
     setIsLoading(prev => ({ ...prev, generating: true }));
+    let currentPost: any = { id: Date.now(), platform: selectedPlatform, content: "", hashtags: [] };
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-post', {
-        body: { 
-          topic: selectedTrending ? `${topic} (trending: ${selectedTrending})` : topic,
-          platform: selectedPlatform 
-        }
-      });
+      // 1. Generate Text (Grok/Gemini)
+      if (generateTypes.includes("text")) {
+        const { data, error } = await supabase.functions.invoke('generate-post', {
+          body: { topic, platform: selectedPlatform }
+        });
+        if (error) throw error;
+        currentPost = { ...currentPost, ...data };
+        setEditedContent(data.content);
+      }
 
-      if (error) throw error;
+      // 2. Generate Image (Using your Fal API function)
+      if (generateTypes.includes("image")) {
+        const { data, error } = await supabase.functions.invoke('generate-image', {
+          body: { prompt: topic }
+        });
+        if (error) throw error;
+        currentPost = { ...currentPost, imageUrl: data.url, mediaPath: data.path, mediaType: 'image' };
+      }
 
-      setGeneratedPost(data);
-      setEditedContent(data.content);
-      toast.success("Post generated!");
+      // 3. Generate Video (Assuming you'll add a generate-video function with Fal API)
+      if (generateTypes.includes("video")) {
+        const { data, error } = await supabase.functions.invoke('generate-video', {
+          body: { prompt: topic, image_url: currentPost.imageUrl }
+        });
+        if (error) throw error;
+        currentPost = { ...currentPost, imageUrl: data.url, mediaPath: data.path, mediaType: 'video' };
+      }
+
+      setGeneratedPost(currentPost);
+      toast.success("Omnipost content ready!");
     } catch (e: any) {
-      toast.error(e.message || "Failed to generate post");
+      console.error("Generation Error:", e);
+      toast.error("Failed to generate. Check your Edge Functions.");
     } finally {
       setIsLoading(prev => ({ ...prev, generating: false }));
     }
   }
 
-  async function handleGenerateImage() {
-    if (!generatedPost) return;
-    setIsLoading(prev => ({ ...prev, image: true }));
-
+  async function handlePublishNow() {
+    if (!generatedPost || selectedPublishPlatforms.length === 0) {
+      return toast.error("Select platforms and generate content first.");
+    }
+    setIsLoading(prev => ({ ...prev, publishing: true }));
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image', {
+      const { data, error } = await supabase.functions.invoke('publish-post', {
         body: { 
-          postId: generatedPost.id,
-          prompt: generatedPost.imagePrompt ?? `Visual for: ${generatedPost.content.slice(0, 100)}`
+          content: editedContent, 
+          platforms: selectedPublishPlatforms, 
+          mediaUrl: generatedPost.imageUrl,
+          mediaPath: generatedPost.mediaPath
         }
       });
-
       if (error) throw error;
-      setGeneratedPost(p => p ? { ...p, imageUrl: data.imageUrl } : p);
-      toast.success("Image generated!");
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setIsLoading(prev => ({ ...prev, image: false }));
-    }
-  }
-
-  async function handleSaveEdit() {
-    if (!generatedPost) return;
-    setIsLoading(prev => ({ ...prev, saving: true }));
-
-    const { error } = await supabase
-      .from('posts')
-      .update({ content: editedContent })
-      .eq('id', generatedPost.id);
-
-    if (!error) {
-      setGeneratedPost(p => p ? { ...p, content: editedContent } : p);
-      toast.success("Post saved");
-    } else {
-      toast.error("Failed to save");
-    }
-    setIsLoading(prev => ({ ...prev, saving: false }));
-  }
-
-  async function handlePublishNow() {
-    if (!generatedPost || selectedPublishPlatforms.length === 0) return;
-    setIsLoading(prev => ({ ...prev, publishing: true }));
-
-    const { data, error } = await supabase.functions.invoke('publish-post', {
-      body: { postId: generatedPost.id, platforms: selectedPublishPlatforms }
-    });
-
-    if (!error) {
-      toast.success(`Published to ${selectedPublishPlatforms.join(", ")}!`);
-    } else {
-      toast.error("Publishing failed");
-    }
-    setIsLoading(prev => ({ ...prev, publishing: false }));
-  }
-
-  async function handleDelete() {
-    if (!generatedPost) return;
-    const { error } = await supabase.from('posts').delete().eq('id', generatedPost.id);
-    if (!error) {
+      toast.success("Published successfully!");
       setGeneratedPost(null);
       setEditedContent("");
-      toast.success("Post deleted");
+      setTopic("");
+    } catch (e: any) {
+      toast.error("Publishing failed.");
+    } finally {
+      setIsLoading(prev => ({ ...prev, publishing: false }));
     }
   }
-
-  function togglePublishPlatform(p: string) {
-    setSelectedPublishPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
-    );
-  }
-
-  const charCount = editedContent.length;
-  const platformLimit = selectedPlatform === "twitter" ? 280 : selectedPlatform === "multi" ? 500 : 2200;
 
   return (
     <AppLayout title="Create Content">
       <div className="max-w-[1600px] mx-auto p-4 md:p-6">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
           
-          {/* Left Column: Configuration */}
           <div className="xl:col-span-4 space-y-6">
-            
-            {/* Platform Selection */}
             <div className="card-premium p-5 space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Target Platform</h3>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Platform</h3>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => setSelectedPlatform("multi")}
-                  className={cn("px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all", selectedPlatform === "multi" ? "border-primary/50 bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "border-border/50 text-muted-foreground hover:bg-surface-raised")}
+                  className={cn("px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all", selectedPlatform === "multi" ? "border-primary bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:bg-surface-raised")}
                 >
                   Multi-Post
                 </button>
@@ -220,7 +206,7 @@ export default function CreateContent() {
                   <button
                     key={key}
                     onClick={() => setSelectedPlatform(key as Platform)}
-                    className={cn("px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all", selectedPlatform === key ? "border-primary/50 bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "border-border/50 text-muted-foreground hover:bg-surface-raised")}
+                    className={cn("px-3 py-2.5 rounded-xl border text-[11px] font-bold transition-all", selectedPlatform === key ? "border-primary bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:bg-surface-raised")}
                   >
                     {p.name}
                   </button>
@@ -228,46 +214,64 @@ export default function CreateContent() {
               </div>
             </div>
 
-            {/* Content Input */}
             <div className="card-premium p-5 space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">What's the topic?</h3>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Prompt</h3>
               <Textarea
-  value={topic}
-  onChange={(e) => setTopic(e.target.value)}
-  placeholder="Describe your post idea..."
-  className="min-h-[120px] border-border/50 resize-none text-sm text-white"
-/>
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="What do you want to create?"
+                className="min-h-[120px] border-border/50 resize-none text-sm text-white"
+              />
+              
+              {/* Omni-Selection Toggles */}
+              <div className="flex gap-2 py-2">
+                <button 
+                  onClick={() => toggleType("text")}
+                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
+                >
+                  <FileText className="w-3 h-3" /> TEXT
+                </button>
+                <button 
+                  onClick={() => toggleType("image")}
+                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("image") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
+                >
+                  <ImageIcon className="w-3 h-3" /> IMAGE
+                </button>
+                <button 
+                  onClick={() => toggleType("video")}
+                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("video") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
+                >
+                  <Video className="w-3 h-3" /> VIDEO
+                </button>
+              </div>
+
               <Button
-                onClick={handleGenerate}
+                onClick={handleOmniGenerate}
                 disabled={isLoading.generating || !topic.trim()}
-                className="w-full h-11 bg-primary hover:bg-primary/90 font-bold rounded-xl glow-primary-sm"
+                className="w-full h-11 bg-primary font-bold rounded-xl text-black"
               >
                 {isLoading.generating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
-                {isLoading.generating ? "Generating..." : "Generate Post"}
+                Generate Content
               </Button>
             </div>
 
-            {/* Trending Section (Powered by Grok) */}
             <div className="card-premium p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" />
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Trending (Grok AI)</h3>
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Trending</h3>
               </div>
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {isLoading.trending ? (
-                  Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl bg-surface-raised" />)
+                  Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)
                 ) : (
                   trending.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => {
-                        setSelectedTrending(t.topic === selectedTrending ? null : t.topic);
-                        if (!topic) setTopic(t.topic);
-                      }}
-                      className={cn("w-full text-left p-3 rounded-xl border transition-all group", selectedTrending === t.topic ? "border-primary/40 bg-primary/5" : "border-transparent bg-surface-raised/50 hover:bg-surface-raised")}
+                      onClick={() => setTopic(t.topic)}
+                      className="w-full text-left p-3 rounded-xl border border-transparent bg-surface-raised/50 hover:border-primary/30 transition-all"
                     >
-                      <p className="text-xs font-bold text-foreground group-hover:text-primary">{t.topic}</p>
-                      <span className="text-[10px] text-muted-foreground uppercase">{t.category || "General"}</span>
+                      <p className="text-xs font-bold text-foreground line-clamp-1">{t.topic}</p>
+                      <span className="text-[10px] text-muted-foreground uppercase">{t.category}</span>
                     </button>
                   ))
                 )}
@@ -275,111 +279,85 @@ export default function CreateContent() {
             </div>
           </div>
 
-          {/* Right Column: Output */}
           <div className="xl:col-span-8 space-y-6">
-            {!generatedPost?.content && !isLoading.generating ? (
+            {!generatedPost && !isLoading.generating ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 border-dashed border-2 border-border/50">
-                <div className="relative w-20 h-20 bg-surface-raised rounded-3xl flex items-center justify-center shadow-2xl mb-6">
-                  <Wand2 className="w-10 h-10 text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold mb-3">Ready to create?</h2>
-                <p className="text-muted-foreground max-w-md">The trending topics are live from Grok. Pick one or type your own to start.</p>
+                <Wand2 className="w-12 h-12 text-primary mb-4 opacity-20" />
+                <h2 className="text-xl font-bold mb-2">Ready to create, {userName}?</h2>
+                <p className="text-muted-foreground text-sm">Input a prompt and select your content types to begin.</p>
               </div>
             ) : isLoading.generating ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center p-12">
-                <Loader2 className="w-16 h-16 text-primary animate-spin mb-6" />
-                <h3 className="text-xl font-bold mb-2">Analyzing Trends...</h3>
-                <p className="text-muted-foreground animate-pulse">Applying your unique brand voice</p>
+                <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+                <p className="text-muted-foreground animate-pulse text-lg font-bold">Generating your Omnipost...</p>
+                <p className="text-xs text-muted-foreground mt-2">Checking Nano Banana & Fal.ai status</p>
               </div>
             ) : (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* Editor Card */}
-                <div className="card-premium p-6 bg-surface-raised/20">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      {generatedPost && <Badge className="bg-primary/10 text-primary border-none font-bold px-3 py-1 capitalize">{generatedPost.platform}</Badge>}
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">
-                        <Check className="w-3 h-3" /> AI OPTIMIZED
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                {/* TEXT PREVIEW - Only shows if text was generated */}
+                {generateTypes.includes("text") && (
+                  <div className="card-premium p-6 bg-surface-raised/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <Badge className="bg-primary/10 text-primary px-3 py-1">AI Copy</Badge>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { navigator.clipboard.writeText(editedContent); toast.success("Copied!"); }} className="p-2 hover:bg-surface-raised rounded-lg"><Copy className="w-4 h-4" /></button>
+                        <button onClick={() => setGeneratedPost(null)} className="p-2 hover:bg-destructive/10 text-destructive rounded-lg"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { navigator.clipboard.writeText(editedContent); toast.success("Copied!"); }} className="p-2.5 rounded-xl hover:bg-surface-raised text-muted-foreground"><Copy className="w-4 h-4" /></button>
-                      <button onClick={handleGenerate} className="p-2.5 rounded-xl hover:bg-surface-raised text-muted-foreground"><RefreshCw className="w-4 h-4" /></button>
-                      <button onClick={handleDelete} className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
-                    </div>
+                    <Textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="min-h-[150px] text-lg bg-transparent border-none focus-visible:ring-0 resize-none p-0"
+                    />
                   </div>
-
-                  <Textarea
-                    value={editedContent}
-                    onChange={(e) => setEditedContent(e.target.value)}
-                    className="min-h-[200px] text-lg bg-transparent border-none focus-visible:ring-0 resize-none p-0 font-medium"
-                  />
-
-                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-border/50">
-                    <span className={cn("text-xs font-bold", charCount > platformLimit ? "text-destructive" : "text-muted-foreground")}>
-                      {charCount} <span className="opacity-50">/ {platformLimit} chars</span>
-                    </span>
-                    <div className="flex gap-2">
-                      {generatedPost && editedContent !== generatedPost.content && (
-                        <Button variant="ghost" size="sm" onClick={handleSaveEdit} disabled={isLoading.saving} className="h-8 text-xs font-bold text-primary">
-                          {isLoading.saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save Changes"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Visuals Card */}
+                  {/* MEDIA PREVIEW */}
                   <div className="card-premium p-6 space-y-4 bg-surface-raised/20">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ImageIcon className="w-4 h-4 text-primary" />
-                        <h3 className="text-sm font-bold uppercase tracking-wider">Visual Content</h3>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={handleGenerateImage} disabled={isLoading.image} className="h-8 text-[10px] font-bold">
-                        {isLoading.image ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Sparkles className="w-3 h-3 mr-2" />}
-                        {generatedPost?.imageUrl ? "REGENERATE" : "CREATE IMAGE"}
-                      </Button>
-                    </div>
-                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-surface-raised border border-border/50">
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Visual Preview</h3>
+                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-border/50 flex items-center justify-center">
                       {generatedPost?.imageUrl ? (
-                        <img src={generatedPost.imageUrl} className="w-full h-full object-cover" alt="AI Generated" />
+                        generatedPost.mediaType === 'video' ? (
+                          <video src={generatedPost.imageUrl} controls autoPlay loop className="w-full h-full object-cover" />
+                        ) : (
+                          <img src={generatedPost.imageUrl} className="w-full h-full object-cover" alt="AI Generated" />
+                        )
                       ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/40">
-                          <ImageIcon className="w-12 h-12 mb-2 opacity-20" />
-                          <p className="text-xs font-medium italic">No media attached</p>
+                        <div className="text-center opacity-20">
+                          <ImageIcon className="w-12 h-12 mx-auto mb-2" />
+                          <p className="text-xs">No media generated</p>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Publishing Card */}
+                  {/* PUBLISHING */}
                   <div className="card-premium p-6 flex flex-col bg-surface-raised/20">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Send className="w-4 h-4 text-primary" />
-                      <h3 className="text-sm font-bold uppercase tracking-wider">Publishing</h3>
-                    </div>
+                    <h3 className="text-sm font-bold uppercase tracking-wider mb-4">Publishing</h3>
                     <div className="flex-1 space-y-4">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Select Accounts</p>
                       <div className="flex flex-wrap gap-2">
                         {connectedPlatforms.map((acc) => (
                           <button
                             key={acc.platform}
-                            onClick={() => togglePublishPlatform(acc.platform)}
-                            className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border text-[11px] font-bold transition-all", selectedPublishPlatforms.includes(acc.platform) ? "border-primary bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:bg-surface-raised")}
+                            onClick={() => {
+                              setSelectedPublishPlatforms(prev => 
+                                prev.includes(acc.platform) ? prev.filter(x => x !== acc.platform) : [...prev, acc.platform]
+                              );
+                            }}
+                            className={cn("flex items-center gap-2 px-3 py-2 rounded-xl border text-[11px] font-bold transition-all", selectedPublishPlatforms.includes(acc.platform) ? "border-primary bg-primary/10 text-primary" : "border-border/50 text-muted-foreground")}
                           >
                             {selectedPublishPlatforms.includes(acc.platform) && <Check className="w-3 h-3" />}
-                            {PLATFORMS[acc.platform as Platform]?.name || acc.platform}
+                            {acc.platform}
                           </button>
                         ))}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-6">
-                      <Button variant="outline" onClick={() => setShowScheduler(!showScheduler)} className="h-11 rounded-xl font-bold">
+                      <Button variant="outline" className="h-11 rounded-xl font-bold">
                         <Calendar className="w-4 h-4 mr-2" /> Schedule
                       </Button>
-                      <Button onClick={handlePublishNow} disabled={isLoading.publishing || selectedPublishPlatforms.length === 0} className="h-11 rounded-xl font-bold bg-primary glow-primary-sm">
+                      <Button onClick={handlePublishNow} disabled={isLoading.publishing || selectedPublishPlatforms.length === 0} className="h-11 rounded-xl font-bold bg-primary text-black">
                         {isLoading.publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                         Publish Now
                       </Button>
@@ -394,3 +372,4 @@ export default function CreateContent() {
     </AppLayout>
   );
 }
+
