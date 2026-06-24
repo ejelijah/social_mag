@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   Zap,
+  Cpu,
 } from "lucide-react";
 
 import { Badge } from "./badge";
@@ -227,11 +228,12 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         <div className="px-6 py-5 border-b border-border/60">
           <Link href="/dashboard" className="flex items-center gap-3">
             {/* New Purple AI Logo */}
-            <img 
+            {/* <img 
               src="/icon.png" 
               alt="OmniPost AI Logo" 
               className="w-8 h-8 rounded-lg glow-primary-sm object-cover" 
-            />
+            /> */}
+                          <Cpu className="w-4 h-4 text-primary-foreground" />
             <div>
               <div className="text-sm font-bold gradient-text">OmniPost AI</div>
               <div className="text-xs text-muted-foreground -mt-0.5">Studio</div>
