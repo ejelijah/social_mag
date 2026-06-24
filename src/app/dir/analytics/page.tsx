@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-
+export const dynamic = 'force-dynamic';
 // Define platform info locally since the shared import is missing
 const PLATFORM_INFO: Record<string, { name: string }> = {
   twitter: { name: "X (Twitter)" },

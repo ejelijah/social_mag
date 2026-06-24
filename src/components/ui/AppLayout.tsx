@@ -9,7 +9,6 @@ import {
   Bell,
   Calendar,
   ChevronRight,
-  Cpu,
   LayoutDashboard,
   Link2,
   LogOut,
@@ -176,13 +175,12 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        router.push("/login"); // Or your login URL
+        router.push("/login");
         return;
       }
 
       setUser(session.user);
       
-      // Fetch subscription from your database table
       const { data: sub } = await supabase
         .from("users")
         .select("*")
@@ -228,11 +226,14 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
       <aside className="w-64 shrink-0 flex flex-col glass border-r border-border/60 z-20">
         <div className="px-6 py-5 border-b border-border/60">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center glow-primary-sm">
-              <Cpu className="w-4 h-4 text-primary-foreground" />
-            </div>
+            {/* New Purple AI Logo */}
+            <img 
+              src="/logo.png" 
+              alt="OmniPost AI Logo" 
+              className="w-8 h-8 rounded-lg glow-primary-sm object-cover" 
+            />
             <div>
-              <div className="text-sm font-bold gradient-text">Social AI</div>
+              <div className="text-sm font-bold gradient-text">OmniPost AI</div>
               <div className="text-xs text-muted-foreground -mt-0.5">Studio</div>
             </div>
           </Link>
@@ -260,11 +261,6 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                       )}
                     />
                     {item.label}
-                    {item.href === "/create" && (
-                      <Badge className="ml-auto text-[10px] px-1.5 py-0 bg-primary/20 text-primary border-primary/30">
-                        AI
-                      </Badge>
-                    )}
                   </div>
                 </Link>
               );
@@ -344,8 +340,35 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
-          {children}
+        <main className="flex-1 overflow-y-auto flex flex-col">
+          <div className="flex-1">
+            {children}
+          </div>
+          
+          {/* Professional Footer for App Approval */}
+          <footer className="p-6 border-t border-border/40 mt-auto">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <p className="text-xs text-muted-foreground">
+                &copy; {new Date().getFullYear()} OmniPost AI. All rights reserved.
+              </p>
+              <nav className="flex gap-6">
+                <Link 
+                  href="/policies/privacy.html" 
+                  target="_blank" 
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+                <Link 
+                  href="/policies/terms.html" 
+                  target="_blank" 
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Terms of Service
+                </Link>
+              </nav>
+            </div>
+          </footer>
         </main>
       </div>
     </div>

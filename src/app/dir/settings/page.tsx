@@ -11,6 +11,7 @@ import { Check, Loader2, Sparkles, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/utils/supabase/client";
 
+export const dynamic = 'force-dynamic';
 const BRAND_VOICES = [
   "professional", "casual", "witty", "inspirational", "educational", "bold", "empathetic",
 ] as const;

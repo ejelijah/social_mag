@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client"; // Ensure this path matches your Supabase client setup
+import { createClient } from "@/utils/supabase/client"; 
 import { Badge } from  "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -17,7 +17,6 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
- // Ensure this path matches your global CSS file
 
 const FEATURES = [
   {
@@ -76,8 +75,6 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, [supabase.auth]);
 
-
-
   const isAuthenticated = !!user;
 
   const getLoginUrl = () => {
@@ -93,7 +90,7 @@ export default function Home() {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center glow-primary-sm">
               <Cpu className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-bold gradient-text">Social AI Studio</span>
+            <span className="font-bold gradient-text">OmniPost AI</span>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/pricing">
@@ -124,7 +121,6 @@ export default function Home() {
 
       {/* Hero */}
       <section className="pt-32 pb-24 px-4 relative">
-        {/* Background glow */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/8 rounded-full blur-3xl" />
         </div>
@@ -143,7 +139,7 @@ export default function Home() {
           </h1>
 
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            Stop wrestling with blank pages. Social AI Studio generates authentic, on-brand posts
+            Stop wrestling with blank pages. OmniPost AI generates authentic, on-brand posts
             for all your platforms — then schedules and publishes them automatically.
           </p>
 
@@ -241,7 +237,7 @@ export default function Home() {
             <div className="card-premium p-8">
               <div className="mb-6">
                 <h3 className="text-xl font-bold mb-1">Free Forever</h3>
-                <div className="text-4xl font-bold mb-2">$0</div>
+                <div className="text-4xl font-bold mb-2">USD 0</div>
                 <p className="text-muted-foreground text-sm">Perfect for getting started</p>
               </div>
               <Separator className="mb-6" />
@@ -274,7 +270,7 @@ export default function Home() {
               <div className="mb-6">
                 <h3 className="text-xl font-bold mb-1">Pro</h3>
                 <div className="text-4xl font-bold mb-2">
-                  $29
+                  USD 29
                   <span className="text-lg text-muted-foreground font-normal">/mo</span>
                 </div>
                 <p className="text-muted-foreground text-sm">For serious creators & brands</p>
@@ -310,15 +306,33 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="py-12 border-t border-border/40">
-        <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="container flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
               <Cpu className="w-3.5 h-3.5 text-primary" />
             </div>
-            <span className="text-sm font-semibold gradient-text">Social AI Studio</span>
+            <span className="text-sm font-semibold gradient-text">OmniPost AI</span>
           </div>
+          
+          <nav className="flex items-center gap-6">
+            <Link 
+              href="/policies/privacy.html" 
+              target="_blank" 
+              className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              Privacy Policy
+            </Link>
+            <Link 
+              href="/policies/terms.html" 
+              target="_blank" 
+              className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              Terms of Service
+            </Link>
+          </nav>
+
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Social AI Studio. All rights reserved.
+            © {new Date().getFullYear()} OmniPost AI. All rights reserved.
           </p>
         </div>
       </footer>

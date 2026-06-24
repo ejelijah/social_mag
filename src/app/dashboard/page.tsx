@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client"; // Adjust path to your supabase client
-
+export const dynamic = 'force-dynamic';
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
   scheduled: "bg-blue-500/10 text-blue-400 border-blue-500/20",

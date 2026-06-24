@@ -24,7 +24,7 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
-
+export const dynamic = 'force-dynamic';
 const PLATFORMS = {
   twitter: { name: "Twitter" },
   linkedin: { name: "LinkedIn" },

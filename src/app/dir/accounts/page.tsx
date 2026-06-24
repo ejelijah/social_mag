@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-
+export const dynamic = 'force-dynamic';
 const PLATFORMS = {
   twitter: { name: "twitter" },
   linkedin: { name: "LinkedIn" },

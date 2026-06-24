@@ -18,7 +18,7 @@ import {
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
-
+export const dynamic = 'force-dynamic';
 // Mocking platform info locally
 const PLATFORM_INFO: Record<string, { name: string }> = {
   twitter: { name: "X (Twitter)" },

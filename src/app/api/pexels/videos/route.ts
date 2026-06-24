@@ -1,7 +1,9 @@
+
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/supabase-auth";
 import { searchPexelsVideos } from "@/services/ai/pexels";
-
+export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuthUser();
