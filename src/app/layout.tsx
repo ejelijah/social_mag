@@ -8,7 +8,7 @@ description: "Automate your social media with AI",
 metadataBase: new URL('https://omnipost.one'),
 icons: {
 icon: '/icon.png', // This is your CPU icon for the browser tab
-apple: '/omni.png',
+apple: '/icon.png',//this is the app logo for the application  change from mobil to icon 
 },
 openGraph: {
 title: 'OmniPost AI',
