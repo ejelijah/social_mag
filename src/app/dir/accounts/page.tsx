@@ -247,7 +247,7 @@ export default function AccountsPage() {
                           }
 
                           if (platform === "facebook" || platform === "instagram") {
-                            router.push("/api/auth/meta/login");
+                            router.push("/api/oauth/meta/login");
                           } else {
                             router.push(`/api/oauth/${platform}/login`);
                           }
