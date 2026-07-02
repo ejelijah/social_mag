@@ -39,7 +39,7 @@ type Platform = keyof typeof PLATFORMS;
 export default function CreateContent() {
   const supabase = createClient();
 
-  const [userName, setUserName] = useState("Elijah");
+  const [userName, setUserName] = useState("User");
   const [topic, setTopic] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "multi">("multi");
   
@@ -165,27 +165,51 @@ export default function CreateContent() {
     if (!generatedPost || selectedPublishPlatforms.length === 0) {
       return toast.error("Select platforms and generate content first.");
     }
+
     setIsLoading(prev => ({ ...prev, publishing: true }));
+    
+    // We use Promise.allSettled so that if one platform fails, 
+    // it doesn't stop the others from trying to publish.
     try {
-      const { data, error } = await supabase.functions.invoke('publish-post', {
-        body: { 
-          content: editedContent, 
-          platforms: selectedPublishPlatforms, 
-          mediaUrl: generatedPost.imageUrl,
-          mediaPath: generatedPost.mediaPath
-        }
+      const publishPromises = selectedPublishPlatforms.map(async (platform) => {
+        const functionName = `post-${platform.toLowerCase()}`;
+        
+        const { data, error } = await supabase.functions.invoke(functionName, {
+          body: { 
+            content: editedContent, 
+            mediaUrl: generatedPost.imageUrl,
+            mediaPath: generatedPost.mediaPath
+          }
+        });
+
+        if (error) throw new Error(`${platform}: ${error.message}`);
+        return { platform, data };
       });
-      if (error) throw error;
-      toast.success("Published successfully!");
-      setGeneratedPost(null);
-      setEditedContent("");
-      setTopic("");
+
+      const results = await Promise.allSettled(publishPromises);
+      
+      const failures = results.filter(r => r.status === 'rejected');
+      const successes = results.filter(r => r.status === 'fulfilled');
+
+      if (failures.length > 0) {
+        failures.forEach((f: any) => toast.error(`Failed to post: ${f.reason}`));
+      }
+
+      if (successes.length > 0) {
+        toast.success(`Successfully published to ${successes.length} platforms!`);
+        // Only clear state if at least one succeeded
+        setGeneratedPost(null);
+        setEditedContent("");
+        setTopic("");
+      }
     } catch (e: any) {
-      toast.error("Publishing failed.");
+      console.error("Publishing Error:", e);
+      toast.error("An unexpected error occurred during publishing.");
     } finally {
       setIsLoading(prev => ({ ...prev, publishing: false }));
     }
   }
+
 
   return (
     <AppLayout title="Create Content">

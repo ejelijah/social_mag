@@ -42,3 +42,69 @@ entrypoint = "./functions/publish-post/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/publish-post/*.html" ]
+
+[functions.post-twitter]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-twitter/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-twitter/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-twitter/*.html" ]
+
+[functions.post-snapchat]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-snapchat/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-snapchat/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-snapchat/*.html" ]
+
+[functions.post-facebook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-facebook/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-facebook/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-facebook/*.html" ]
+
+[functions.post-instagram]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-instagram/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-instagram/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-instagram/*.html" ]
+
+[functions.post-tiktok]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-tiktok/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-tiktok/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-tiktok/*.html" ]
+
+[functions.post-youtube]
+enabled = true
+verify_jwt = false
+import_map = "./functions/post-youtube/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/post-youtube/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/post-youtube/*.html" ]

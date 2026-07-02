@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { exchangeAndSaveXTokens } from '../x';
+import { exchangeAndSaveXTokens } from './x';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

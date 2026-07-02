@@ -18,10 +18,12 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+
 export const dynamic = 'force-dynamic';
+
 const PLATFORMS = {
-  twitter: { name: "twitter" },
-  linkedin: { name: "LinkedIn" },
+  facebook: { name: "Facebook" },
+  twitter: { name: "Twitter" },
   instagram: { name: "Instagram" },
   snapchat: { name: "Snapchat" },
   youtube: { name: "YouTube" },
@@ -31,8 +33,8 @@ const PLATFORMS = {
 type Platform = keyof typeof PLATFORMS;
 
 const PLATFORM_ICONS: Record<string, string> = {
+  facebook: "f",
   twitter: "𝕏",
-  linkedin: "in",
   instagram: "📸",
   snapchat: "👻",
   youtube: "▶",
@@ -40,8 +42,8 @@ const PLATFORM_ICONS: Record<string, string> = {
 };
 
 const PLATFORM_BG: Record<string, string> = {
+  facebook: "bg-[#1877F2]",
   twitter: "bg-zinc-900",
-  linkedin: "bg-[#0A66C2]",
   instagram: "bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400",
   snapchat: "bg-yellow-400",
   youtube: "bg-red-600",
@@ -97,7 +99,7 @@ export default function AccountsPage() {
     try {
       const { error } = await supabase
         .from("social_accounts")
-        .update({ is_connected: false }) // Use snake_case
+        .update({ is_connected: false })
         .eq("platform", platform);
 
       if (error) throw error;
@@ -115,6 +117,7 @@ export default function AccountsPage() {
   const connectedAccounts = data?.accounts.filter((a: any) => a.is_connected) ?? [];
   const isPro = data?.plan === "pro";
   const platformLimit = data?.platformLimit ?? 2;
+
   return (
     <AppLayout title="Connected Accounts">
       <div className="p-6 space-y-6">
@@ -173,8 +176,6 @@ export default function AccountsPage() {
             {platforms.map((platform) => {
               const info = PLATFORMS[platform];
               const account = data?.accounts.find((a: any) => a.platform === platform);
-              
-              // Correctly check connection using camelCase
               const is_connected = account?.is_connected ?? false;
               const isLocked = !isPro && !is_connected && connectedAccounts.length >= platformLimit;
 
@@ -214,9 +215,8 @@ export default function AccountsPage() {
                   {is_connected ? (
                     <div className="space-y-3">
                       <div>
-                        <p className="text-xs text-muted-foreground text-black">
-                          {/* Fallback to 'Connected' if username isn't available yet */}
-                          @{account?.platformUsername || 'Connected'}
+                        <p className="text-xs text-muted-foreground">
+                          @{account?.username || 'Connected'}
                         </p>
                       </div>
                       <Button
@@ -245,7 +245,12 @@ export default function AccountsPage() {
                             toast.error("Upgrade to Pro to connect more platforms");
                             return;
                           }
-                          router.push(`/api/oauth/${platform}/login`);
+
+                          if (platform === "facebook" || platform === "instagram") {
+                            router.push("/api/auth/meta/login");
+                          } else {
+                            router.push(`/api/oauth/${platform}/login`);
+                          }
                         }}
                         disabled={isLocked}
                         className="w-full text-xs h-8 gap-2"
