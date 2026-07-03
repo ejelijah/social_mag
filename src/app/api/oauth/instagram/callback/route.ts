@@ -1,52 +1,46 @@
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_UR || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-  throw new Error('Missing Supabase environment variables');
-}
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url);
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string);
+  // 1. Handle Webhook Verification (Meta Dashboard "Verify and Save" button)
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
 
-import { NextApiRequest, NextApiResponse } from 'next';
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // 1. Webhook Verification (GET)
-  if (req.method === 'GET' && req.query['hub.mode'] === 'subscribe') {
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
-
-    if (mode === 'subscribe' && token === 'my_secret_omni_token_123') {
-      return res.status(200).send(challenge);
-    } else {
-      return res.status(403).send('Verification failed');
-    }
+  if (mode === "subscribe" && token === "my_secret_omni_token_123") {
+    // Return the challenge as plain text to verify the webhook
+    return new Response(challenge, { status: 200 });
   }
 
-  // 2. OAuth Callback & Token Exchange (GET)
-  if (req.method === 'GET' && req.query.code) {
-    const { code, state } = req.query;
+  // 2. Handle OAuth Callback (When a user connects their account)
+  const code = searchParams.get("code");
+  const state = searchParams.get("state"); // This is the Supabase User ID passed from the login button
+
+  if (code && state) {
+    const supabase = await createClient();
 
     try {
-      // A. Exchange code for Short-Lived Access Token
-      const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {
-        method: 'POST',
+      // A. Exchange code for Short-Lived Access Token (valid for 1-2 hours)
+      const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
         body: new URLSearchParams({
-          client_id: process.env.INSTAGRAM_APP_ID || '',
-          client_secret: process.env.INSTAGRAM_APP_SECRET || '',
-          grant_type: 'authorization_code',
-          redirect_uri: 'https://omnipost.one/api/oauth/instagram/callback',
-          code: Array.isArray(code) ? code[0] : code || '',
+          client_id: process.env.INSTAGRAM_APP_ID!,
+          client_secret: process.env.INSTAGRAM_APP_SECRET!,
+          grant_type: "authorization_code",
+          redirect_uri: `${origin}/api/oauth/instagram`, // Must match exactly what's in Meta portal
+          code: code,
         }),
       });
 
       const tokenData = await tokenResponse.json();
-      
       if (tokenData.error) throw new Error(tokenData.error_message);
 
       const shortLivedToken = tokenData.access_token;
       const instagramUserId = tokenData.user_id;
 
-      // B. Exchange for Long-Lived Access Token (60 days)
+      // B. Exchange for Long-Lived Access Token (valid for 60 days)
       const longLivedResponse = await fetch(
         `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortLivedToken}`
       );
@@ -54,25 +48,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const longLivedData = await longLivedResponse.json();
       const finalToken = longLivedData.access_token;
 
-      // C. Save to Supabase
-      const { error } = await supabase
-        .from('user_connections')
+      // C. Save the token to your social_accounts table
+      const { error: upsertError } = await supabase
+        .from("social_accounts")
         .upsert({
-          user_id: state, // Linking back via the state parameter
-          platform: 'instagram',
+          user_id: state, // Using the ID we passed in 'state'
+          platform: "instagram",
+          provider: "instagram",
           access_token: finalToken,
-          platform_user_id: instagramUserId,
+          is_connected: true,
           updated_at: new Date().toISOString(),
+          metadata: {
+            instagram_user_id: instagramUserId,
+          },
+        }, {
+          onConflict: 'user_id,platform'
         });
 
-      if (error) throw error;
+      if (upsertError) throw upsertError;
 
-      return res.redirect('/dashboard?connection=success');
+      // Success redirect
+      return NextResponse.redirect(`${origin}/dashboard/accounts?success=instagram_connected`);
     } catch (error) {
-      console.error('Instagram Auth Error:', error);
-      return res.redirect('/dashboard?connection=error');
+      console.error("Instagram Auth Error:", error);
+      return NextResponse.redirect(`${origin}/dashboard/accounts?error=token_exchange_failed`);
     }
   }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+  // Fallback if neither verification nor code is present
+  return NextResponse.redirect(`${origin}/dashboard/accounts?error=auth_failed`);
 }
