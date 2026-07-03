@@ -4,6 +4,18 @@ import { upsertUserFromAuth } from "@/lib/users";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+
+  // 1. Handle Webhook Verification (Handshake for Meta Dashboard)
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
+
+  // This allows you to click "Verify and Save" in the Meta dashboard for Facebook
+  if (mode === "subscribe" && token === "my_secret_omni_token_123") {
+    return new Response(challenge, { status: 200 });
+  }
+
+  // 2. Handle Facebook OAuth Callback
   const code = searchParams.get("code");
 
   if (code) {
@@ -24,7 +36,7 @@ export async function GET(request: Request) {
         .from("social_accounts")
         .upsert({
           user_id: user.id,
-          platform: "facebook",
+          platform: "facebook", 
           provider: "facebook",
           access_token: session.provider_token,
           refresh_token: session.provider_refresh_token || null,
@@ -43,7 +55,7 @@ export async function GET(request: Request) {
         return NextResponse.redirect(`${origin}/dashboard/accounts?error=db_sync_failed`);
       }
 
-      return NextResponse.redirect(`${origin}/dashboard/accounts?success=meta_connected`);
+      return NextResponse.redirect(`${origin}/dashboard/accounts?success=facebook_connected`);
     }
   }
 

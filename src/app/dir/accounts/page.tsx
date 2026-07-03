@@ -245,12 +245,7 @@ export default function AccountsPage() {
                             toast.error("Upgrade to Pro to connect more platforms");
                             return;
                           }
-
-                          if (platform === "facebook" || platform === "instagram") {
-                            router.push("/api/oauth/meta/login");
-                          } else {
                             router.push(`/api/oauth/${platform}/login`);
-                          }
                         }}
                         disabled={isLocked}
                         className="w-full text-xs h-8 gap-2"
