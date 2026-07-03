@@ -20,6 +20,7 @@ import {
   Wand2,
   Video,
   FileText,
+  Facebook,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ import { createClient } from "@/utils/supabase/client";
 export const dynamic = 'force-dynamic';
 const PLATFORMS = {
   twitter: { name: "Twitter" },
-  linkedin: { name: "LinkedIn" },
+  facebook: { name: "Facebook" },
   instagram: { name: "Instagram" },
   snapchat: { name: "Snapchat" },
   youtube: { name: "YouTube" },

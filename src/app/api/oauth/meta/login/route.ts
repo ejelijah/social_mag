@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "facebook",
     options: {
-      redirectTo: `${origin}/api/auth/meta/callback`,
+      redirectTo: `${origin}/api/oauth/meta/callback`,
       scopes: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish",
     },
   });
