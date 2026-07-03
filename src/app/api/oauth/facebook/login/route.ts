@@ -8,13 +8,12 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "facebook",
     options: {
-      // 1. Updated this path to match your new "facebook" folder
-      redirectTo: `${origin}/api/oauth/facebook/callback`, 
-      
-      // 2. These scopes are correct for managing Facebook Pages and Instagram Business
-      scopes: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish",
+      redirectTo: `${origin}/api/oauth/facebook/callback`,
+      // Strictly Facebook Page permissions
+      scopes: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts",
     },
   });
+  
 
   if (error) {
     return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);

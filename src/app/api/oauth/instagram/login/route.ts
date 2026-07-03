@@ -5,33 +5,25 @@ export async function GET(request: Request) {
   const { origin } = new URL(request.url);
   const supabase = await createClient();
 
-  // 1. Fetch the user's ID to pass as 'state' 
-  // This ensures we know which account to link when they come back
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.redirect(`${origin}/login`);
 
-  if (!user) {
-    return NextResponse.redirect(`${origin}/login?error=session_expired`);
-  }
-
-  // 2. Initiate the OAuth flow
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "facebook", // Instagram Business uses the Facebook provider in Supabase
+    provider: "facebook", 
     options: {
-      // Must match your Instagram callback folder exactly
+      // THIS MUST POINT TO INSTAGRAM CALLBACK
       redirectTo: `${origin}/api/oauth/instagram/callback`, 
-      scopes: "public_profile,email,instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+      // These scopes force the "Select Instagram Account" screen to appear
+      scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
       queryParams: {
-        // We pass the user ID in the state so the callback can save the token to the right user
-        state: user.id 
+        state: user.id,
+        // This forces the user to see the permission screen again 
+        // useful for testing to make sure you see the Instagram options
+        auth_type: 'rerequest' 
       }
     },
   });
 
-  if (error) {
-    console.error("OAuth Error:", error.message);
-    return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent(error.message)}`);
-  }
-
-  // 3. Redirect the user to the Meta/Instagram authorization page
+  if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);
   return NextResponse.redirect(data.url);
 }
