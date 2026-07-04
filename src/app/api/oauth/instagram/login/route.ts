@@ -5,25 +5,33 @@ export async function GET(request: Request) {
   const { origin } = new URL(request.url);
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(`${origin}/login`);
+  const redirectUri = `${origin}/api/oauth/instagram/callback`;
 
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "facebook", 
-    options: {
-      // THIS MUST POINT TO INSTAGRAM CALLBACK
-      redirectTo: `${origin}/api/oauth/instagram/callback`, 
-      // These scopes force the "Select Instagram Account" screen to appear
-      scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
-      queryParams: {
-        state: user.id,
-        // This forces the user to see the permission screen again 
-        // useful for testing to make sure you see the Instagram options
-        auth_type: 'rerequest' 
-      }
-    },
+  // --- DEBUG MODE: Visit this URL in your browser to see the values ---
+  return new Response(JSON.stringify({ 
+    origin: origin, 
+    fullRedirectUri: redirectUri,
+    instructions: "Copy the fullRedirectUri above and add it to your Facebook App settings under 'Valid OAuth Redirect URIs'"
+  }), {
+    headers: { "Content-Type": "application/json" },
   });
+  // --------------------------------------------------------------------
 
-  if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);
-  return NextResponse.redirect(data.url);
+//   const { data: { user } } = await supabase.auth.getUser();
+//   if (!user) return NextResponse.redirect(`${origin}/login`);
+
+//   const { data, error } = await supabase.auth.signInWithOAuth({
+//     provider: "facebook", 
+//     options: {
+//       redirectTo: redirectUri, 
+//       scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+//       queryParams: {
+//         state: user.id,
+//         auth_type: 'rerequest' 
+//       }
+//     },
+//   });
+
+//   if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);
+//   return NextResponse.redirect(data.url);
 }
