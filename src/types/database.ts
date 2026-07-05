@@ -21,5 +21,5 @@ export type ScheduledPostRow = {
   content: { text: string; imageUrl?: string };
   scheduled_at: string;
   status: string;
-  created_at?: string | null;
+  createdAt?: string | null;
 };

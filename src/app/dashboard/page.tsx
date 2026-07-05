@@ -48,7 +48,7 @@ export default function DashboardPage() {
         .from("posts")
         .select("*")
         .limit(5)
-        .order("created_at", { ascending: false });
+        .order("createdAt", { ascending: false });
 
       if (userPosts) setPosts(userPosts);
       setLoading(false);

@@ -185,7 +185,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
       const { data: sub } = await supabase
         .from("users")
         .select("*")
-        .eq("userId", session.user.id)
+        .eq("id", session.user.id)
         .single();
       
       setSubscription(sub);
