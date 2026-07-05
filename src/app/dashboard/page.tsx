@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<any[]>([]);
   const [brand, setBrand] = useState<any>(null);
+  const [name, setName] = useState<string>("User");
 
   useEffect(() => {
     async function fetchData() {
@@ -53,6 +54,11 @@ export default function DashboardPage() {
       if (userPosts) setPosts(userPosts);
       setLoading(false);
     }
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setName(user?.user_metadata?.name || "User");
+    });
+    const name = supabase.auth.getUser().then(({ data: { user } }) => user?.user_metadata?.name || "User");
+    
 
     fetchData();
   }, []);
@@ -82,7 +88,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold mb-1">
-            Welcome back, Elijah
+            Welcome back, {name ? name : "User"}!
           </h1>
           <p className="text-muted-foreground text-sm">
             {new Date().toLocaleDateString("en-US", {

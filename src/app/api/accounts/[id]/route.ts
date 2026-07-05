@@ -21,7 +21,7 @@ export async function DELETE(
     const { id } = await params;
 
     // 2. Delete the record from social_accounts
-    // Note: We include userId in the filter to ensure users can only delete their own accounts
+
     const { error: dbError } = await supabase
       .from("social_accounts")
       .delete()

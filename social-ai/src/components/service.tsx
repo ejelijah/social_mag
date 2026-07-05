@@ -31,7 +31,7 @@ const SocialDashboard = () => {
 
   return (
     <div className="p-8 max-w-2xl mx-auto bg-white shadow-lg rounded-xl">
-      <h1 className="text-2xl font-bold mb-6">Elijah's Content AI</h1>
+      <h1 className="text-2xl font-bold mb-6"> Content AI</h1>
       
       <div className="mb-4">
         <label className="block text-sm font-medium mb-2">What is the topic?</label>

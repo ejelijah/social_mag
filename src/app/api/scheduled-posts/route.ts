@@ -11,7 +11,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("scheduled_posts")
       .select("id, platforms, content, scheduledAt, status, createdAt")
-      .eq("userId", user.id)
+      .eq("id", user.id)
       .order("scheduledAt", { ascending: true });
 
     if (error) {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     const row = {
-      userId: user.id,
+      user_id: user.id,
       platforms: platforms.map(String),
       content: {
         text: content.text,

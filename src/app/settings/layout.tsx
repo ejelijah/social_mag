@@ -29,7 +29,7 @@ export default async function SettingsLayout({
   // 3. Format navUser using the public table data
   const navUser = {
     id: profile?.id,
-    name: profile?.name || "Elijah",
+    name: profile?.name || " User",
     email: profile?.email,
   };
 

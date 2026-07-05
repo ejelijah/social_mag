@@ -16,7 +16,7 @@ export type PublicUserRow = {
  */
 export type ScheduledPostRow = {
   id: string;
-  userId: string;
+  user_id: string;
   platforms: string[];
   content: { text: string; imageUrl?: string };
   scheduled_at: string;
