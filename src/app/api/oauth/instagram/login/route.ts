@@ -5,17 +5,8 @@ export async function GET(request: Request) {
   const { origin } = new URL(request.url);
   const supabase = await createClient();
 
+  // Ensure this matches your Supabase Redirect Allow List exactly
   const redirectUri = `${origin}/api/oauth/instagram/callback`;
-
-  // --- DEBUG MODE: Visit this URL in your browser to see the values ---
-//   return new Response(JSON.stringify({ 
-//     origin: origin, 
-//     fullRedirectUri: redirectUri,
-//     instructions: "Copy the fullRedirectUri above and add it to your Facebook App settings under 'Valid OAuth Redirect URIs'"
-//   }), {
-//     headers: { "Content-Type": "application/json" },
-//   });
-  // --------------------------------------------------------------------
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(`${origin}/login`);
@@ -26,12 +17,12 @@ export async function GET(request: Request) {
       redirectTo: redirectUri, 
       scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
       queryParams: {
-        state: user.id,
+        // REMOVED 'state: user.id' to let Supabase handle security
         auth_type: 'rerequest' 
       }
     },
   });
 
-  if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);
+  if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent(error.message)}`);
   return NextResponse.redirect(data.url);
 }

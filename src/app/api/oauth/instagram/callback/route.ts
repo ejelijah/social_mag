@@ -19,20 +19,32 @@ export async function GET(request: Request) {
 
   // 2. OAuth Callback
   const code = searchParams.get("code");
-  const state = searchParams.get("state"); // This should be your Supabase User ID
-
-  if (!code || !state) {
-    console.error("DEBUG: Missing code or state. Code:", !!code, "State:", !!state);
-    return NextResponse.redirect(`${origin}/login?error=missing_parameters`);
+  
+  // We no longer rely on 'state' from the URL to avoid the bad_oauth_state error.
+  // Instead, we get the user directly from the Supabase session.
+  if (!code) {
+    console.error("DEBUG: No code received in URL");
+    return NextResponse.redirect(`${origin}/login?error=no_code_received`);
   }
 
   const supabase = await createClient();
 
   try {
-    // A. Exchange code for Access Token
+    // A. Identify the User from the current session
+    console.log("DEBUG: Identifying user from session...");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("DEBUG: No active session found. User must be logged in to connect Instagram.");
+      throw new Error("Session not found. Please log in to Omnipost again before connecting Instagram.");
+    }
+
+    const userId = user.id;
+    console.log("DEBUG: User identified:", userId);
+
+    // B. Exchange code for Short-Lived Access Token
     console.log("DEBUG: Exchanging Instagram code for short-lived token...");
     
-    // Check if Env variables exist
     if (!process.env.INSTAGRAM_APP_ID || !process.env.INSTAGRAM_APP_SECRET) {
       throw new Error("Environment Variables MISSING: Check INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Netlify.");
     }
@@ -58,7 +70,7 @@ export async function GET(request: Request) {
     const shortLivedToken = tokenData.access_token;
     console.log("DEBUG: Short-lived token received.");
 
-    // B. Exchange for Long-Lived Access Token (60 days)
+    // C. Exchange for Long-Lived Access Token (60 days)
     console.log("DEBUG: Exchanging for 60-day long-lived token...");
     const longLivedResponse = await fetch(
       `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.INSTAGRAM_APP_ID}&client_secret=${process.env.INSTAGRAM_APP_SECRET}&fb_exchange_token=${shortLivedToken}`
@@ -74,12 +86,12 @@ export async function GET(request: Request) {
     const finalToken = longLivedData.access_token;
     console.log("DEBUG: Long-lived token secured.");
 
-    // C. Save to your social_accounts table
-    console.log("DEBUG: Upserting to social_accounts for User:", state);
+    // D. Save to your social_accounts table
+    console.log("DEBUG: Upserting to social_accounts for User:", userId);
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
-        user_id: state, // Ensure this 'state' is the actual Supabase UUID
+        user_id: userId,
         platform: "instagram",
         access_token: finalToken,
         is_connected: true,
@@ -98,7 +110,7 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("DEBUG: Instagram Catch Block:", error.message);
-    // Show the error as JSON in the browser window
+    // Show the error as JSON in the browser window for debugging
     return new Response(JSON.stringify({ 
       message: "Instagram Process Failed", 
       error: error.message,
