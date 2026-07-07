@@ -11,7 +11,10 @@ export async function GET(request: Request) {
 
   // 2. Construct the Instagram-Direct Login URL
   const clientID = process.env.INSTAGRAM_APP_ID;
-  const redirectUri = `${origin}/api/oauth/instagram/callback`;
+  if (!clientID) {
+    return new Response("Error: INSTAGRAM_APP_ID is missing in environment variables", { status: 500 });
+  }
+  const redirectUri = "https://omnipost.one/api/oauth/instagram/callback";
   
   // These are the "Business" scopes for Instagram
   const scopes = [
