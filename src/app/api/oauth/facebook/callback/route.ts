@@ -37,10 +37,18 @@ export async function GET(request: Request) {
     const shortLivedToken = data.session.provider_token;
     
     try {
-      // B. Exchange for Long-Lived Token (60 days)
-      const response = await fetch(
-        `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.NEXT_PUBLIC_FACEBOOK_APP_ID}&client_secret=${process.env.FACEBOOK_APP_SECRET}&fb_exchange_token=${shortLivedToken}`
-      );
+   // B. Exchange for Long-Lived Token (60 days)
+const params = new URLSearchParams({
+  grant_type: 'fb_exchange_token',
+  client_id: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+  client_secret: process.env.FACEBOOK_APP_SECRET!,
+  fb_exchange_token: shortLivedToken!,
+});
+
+const response = await fetch(
+  `https://graph.facebook.com/v19.0/oauth/access_token?${params.toString()}`
+);
+
       
       const tokenData = await response.json();
       

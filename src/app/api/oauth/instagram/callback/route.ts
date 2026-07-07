@@ -18,21 +18,24 @@ export async function GET(request: Request) {
   const state = searchParams.get("state"); 
   const nextPath = "/dir/accounts";
 
+
   if (code && state) {
     const supabase = await createClient();
+
+    const params = new URLSearchParams({
+        client_id: process.env.INSTAGRAM_APP_ID!,
+        client_secret: process.env.INSTAGRAM_APP_SECRET!,
+        redirect_uri: `${origin}/api/oauth/instagram/callback`,
+        code: code,
+      });
+
 
     try {
       // A. Exchange code for Access Token
       // NOTE: For posting (Graph API), we usually hit graph.facebook.com
-      const tokenResponse = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token`, {
-        method: "GET", // Facebook uses GET for this exchange
-        params: new URLSearchParams({
-          client_id: process.env.INSTAGRAM_APP_ID!,
-          client_secret: process.env.INSTAGRAM_APP_SECRET!,
-          redirect_uri: `${origin}/api/oauth/instagram/callback`, // MUST match your login button
-          code: code,
-        }),
-      } as any);
+  const tokenResponse = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params.toString()}`, {
+    method: "GET",
+  });
 
       const tokenData = await tokenResponse.json();
       if (tokenData.error) throw new Error(tokenData.error.message);
