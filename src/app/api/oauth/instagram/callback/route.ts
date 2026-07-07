@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       code: code,
     });
 
-    const tokenResponse = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params.toString()}`, {
+    const tokenResponse = await fetch(`https://graph.instagram.com/v19.0/oauth/access_token?${params.toString()}`, {
       method: "GET",
     });
 
