@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       console.log("DEBUG: Fetching long-lived token from Meta...");
       const params = new URLSearchParams({
         grant_type: 'fb_exchange_token',
-        client_id: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+        client_id: process.env.FACEBOOK_APP_ID!,
         client_secret: process.env.FACEBOOK_APP_SECRET!,
         fb_exchange_token: shortLivedToken!,
       });
