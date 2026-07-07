@@ -5,24 +5,24 @@ export async function GET(request: Request) {
   const { origin } = new URL(request.url);
   const supabase = await createClient();
 
-  // Ensure this matches your Supabase Redirect Allow List exactly
-  const redirectUri = `${origin}/api/oauth/instagram/callback`;
-
+  // 1. Ensure user is logged in to Omnipost
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(`${origin}/login`);
 
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "facebook", 
-    options: {
-      redirectTo: redirectUri, 
-      scopes: "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
-      queryParams: {
-        // REMOVED 'state: user.id' to let Supabase handle security
-        auth_type: 'rerequest' 
-      }
-    },
-  });
+  // 2. Construct the Instagram-Direct Login URL
+  const clientID = process.env.INSTAGRAM_APP_ID;
+  const redirectUri = `${origin}/api/oauth/instagram/callback`;
+  
+  // These are the "Business" scopes for Instagram
+  const scopes = [
+    "instagram_business_basic",
+    "instagram_business_content_publish",
+    "instagram_business_manage_comments",
+    "instagram_business_manage_insights"
+  ].join(",");
 
-  if (error) return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent(error.message)}`);
-  return NextResponse.redirect(data.url);
+  const instagramAuthUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scopes}&state=${user.id}`;
+
+  // 3. Redirect the user directly to Instagram
+  return NextResponse.redirect(instagramAuthUrl);
 }
