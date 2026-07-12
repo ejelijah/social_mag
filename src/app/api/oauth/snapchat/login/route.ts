@@ -16,7 +16,7 @@ const authUrl = new URL("https://accounts.snapchat.com/login/oauth2/authorize");
     authUrl.searchParams.set("client_id", process.env.SNAP_CLIENT_ID!.trim());
     authUrl.searchParams.set("redirect_uri", process.env.SNAP_REDIRECT_URI!);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "snapchat-profile-api");
+    authUrl.searchParams.set("scope", "user.display_name user.bitmoji.avatar");
     authUrl.searchParams.set("state", state);
     return NextResponse.redirect(authUrl.toString());
 }
