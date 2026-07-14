@@ -30,8 +30,8 @@ export async function GET(request: Request) {
         grant_type: 'authorization_code',
         code: code,
         redirect_uri: process.env.SNAP_REDIRECT_URI!.trim(),
-        client_id: process.env.SNAP_CLIENT_ID!,
-        client_secret: process.env.SNAP_CLIENT_SECRET!,
+        client_id: process.env.SNAP_CLIENT_ID!.trim(),
+        client_secret: process.env.SNAP_CLIENT_SECRET!.trim(),
         code_verifier: codeVerifier, // PKCE Verifier
       }),
     });

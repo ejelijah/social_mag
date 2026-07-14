@@ -25,8 +25,8 @@ export async function GET(request: Request) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        client_key: process.env.TIKTOK_CLIENT_KEY!,
-        client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+        client_key: process.env.TIKTOK_CLIENT_KEY!.trim(),
+        client_secret: process.env.TIKTOK_CLIENT_SECRET!.trim(),
         code: code,
         grant_type: "authorization_code",
         redirect_uri: `${origin}/api/auth/tiktok/callback`,
