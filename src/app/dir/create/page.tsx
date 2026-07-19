@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   Calendar,
   Check,
+  CheckCircle2,
   Copy,
   Image as ImageIcon,
   Loader2,
@@ -21,6 +22,7 @@ import {
   Video,
   FileText,
   Facebook,
+  Plus,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -62,6 +64,9 @@ export default function CreateContent() {
   const [trending, setTrending] = useState<any[]>([]);
   const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([]);
   
+  // NEW: State for success screen
+  const [isPublishedSuccessfully, setIsPublishedSuccessfully] = useState(false);
+
   const [isLoading, setIsLoading] = useState({
     trending: true,
     generating: false,
@@ -117,6 +122,7 @@ export default function CreateContent() {
     if (generateTypes.length === 0) return toast.error("Select what to generate (Text/Image/Video)");
 
     setIsLoading(prev => ({ ...prev, generating: true }));
+    setIsPublishedSuccessfully(false); // Reset success state on new generation
     let currentPost: any = { id: Date.now(), platform: selectedPlatform, content: "", hashtags: [] };
 
     try {
@@ -167,13 +173,11 @@ export default function CreateContent() {
         const platformKey = platform.toLowerCase();
         const functionName = `post-${platformKey}`;
         
-        // Prepare platform-specific body mapping
         const requestBody: any = {
           mediaUrl: generatedPost.imageUrl,
           mediaPath: generatedPost.mediaPath,
         };
 
-        // Custom field mapping based on platform requirements
         if (platformKey === 'facebook') {
           requestBody.message = editedContent;
         } else if (platformKey === 'instagram') {
@@ -181,7 +185,7 @@ export default function CreateContent() {
         } else if (platformKey === 'tiktok') {
           requestBody.description = editedContent;
         } else {
-          requestBody.content = editedContent; // Fallback for Twitter/others
+          requestBody.content = editedContent;
         }
         
         const { data, error } = await supabase.functions.invoke(functionName, {
@@ -201,11 +205,16 @@ export default function CreateContent() {
         failures.forEach((f: any) => toast.error(`Failed to post: ${f.reason}`));
       }
 
-      if (successes.length > 0) {
+      // Logic: If everything succeeded with NO errors, show the success sign
+      if (successes.length > 0 && failures.length === 0) {
         toast.success(`Successfully published to ${successes.length} platforms!`);
+        setIsPublishedSuccessfully(true);
         setGeneratedPost(null);
         setEditedContent("");
         setTopic("");
+      } else if (successes.length > 0) {
+        // Partial success (some failed), don't show full success screen yet
+        toast.success(`Published to ${successes.length} platforms, but some failed.`);
       }
     } catch (e: any) {
       console.error("Publishing Error:", e);
@@ -215,6 +224,11 @@ export default function CreateContent() {
     }
   }
 
+  const resetForm = () => {
+    setIsPublishedSuccessfully(false);
+    setGeneratedPost(null);
+    setTopic("");
+  };
 
   return (
     <AppLayout title="Create Content">
@@ -253,22 +267,13 @@ export default function CreateContent() {
               />
               
               <div className="flex gap-2 py-2">
-                <button 
-                  onClick={() => toggleType("text")}
-                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
-                >
+                <button onClick={() => toggleType("text")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
                   <FileText className="w-3 h-3" /> TEXT
                 </button>
-                <button 
-                  onClick={() => toggleType("image")}
-                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("image") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
-                >
+                <button onClick={() => toggleType("image")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("image") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
                   <ImageIcon className="w-3 h-3" /> IMAGE
                 </button>
-                <button 
-                  onClick={() => toggleType("video")}
-                  className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("video") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}
-                >
+                <button onClick={() => toggleType("video")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("video") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
                   <Video className="w-3 h-3" /> VIDEO
                 </button>
               </div>
@@ -308,7 +313,24 @@ export default function CreateContent() {
           </div>
 
           <div className="xl:col-span-8 space-y-6">
-            {!generatedPost && !isLoading.generating ? (
+            {/* SUCCESS SIGN SECTION */}
+            {isPublishedSuccessfully ? (
+              <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 animate-in zoom-in-95 duration-500">
+                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                  <CheckCircle2 className="w-12 h-12 text-primary" />
+                </div>
+                <h2 className="text-3xl font-bold mb-4">Post Published!</h2>
+                <p className="text-muted-foreground text-lg max-w-md mb-8">
+                  Your content has been successfully shared across your selected platforms.
+                </p>
+                <Button 
+                  onClick={resetForm}
+                  className="h-12 px-8 rounded-xl font-bold bg-primary text-black hover:scale-105 transition-transform"
+                >
+                  <Plus className="w-5 h-5 mr-2" /> Create Another Post
+                </Button>
+              </div>
+            ) : !generatedPost && !isLoading.generating ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 border-dashed border-2 border-border/50">
                 <Wand2 className="w-12 h-12 text-primary mb-4 opacity-20" />
                 <h2 className="text-xl font-bold mb-2">Ready to create, {userName}?</h2>
@@ -318,7 +340,7 @@ export default function CreateContent() {
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center p-12">
                 <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
                 <p className="text-muted-foreground animate-pulse text-lg font-bold">Generating your Omnipost...</p>
-                <p className="text-xs text-muted-foreground mt-2">Checking Nano Banana & Fal.ai status</p>
+                <p className="text-xs text-muted-foreground mt-2">Checking Edge Functions & Fal.ai status</p>
               </div>
             ) : (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
