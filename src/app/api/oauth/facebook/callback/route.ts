@@ -71,8 +71,18 @@ export async function GET(request: Request) {
       if (pagesData.error) throw new Error(`Fetch Pages Error: ${pagesData.error.message}`);
 
       const pages = pagesData.data || [];
+      
+      // ERROR HANDLING: If no business pages are found
       if (pages.length === 0) {
-        throw new Error("No Facebook Pages found. You must have a Facebook Page to post.");
+        console.error("DEBUG: No business pages found.");
+        return new Response(JSON.stringify({ 
+          message: "Business Account Required", 
+          error: "We couldn't find any Facebook Pages associated with this account. Personal profiles cannot be used for posting. Please go back, create or switch to a Facebook Business Page, and try connecting again.",
+          instructions: "1. Go to Facebook. 2. Ensure you have a Business Page created. 3. Make sure your personal account is an Admin of that page. 4. Try connecting again."
+        }), { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
       }
 
       // Logic: Pick the first page found (In the future, you can let users choose)
