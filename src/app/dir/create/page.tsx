@@ -25,7 +25,9 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
+
 export const dynamic = 'force-dynamic';
+
 const PLATFORMS = {
   twitter: { name: "Twitter" },
   facebook: { name: "Facebook" },
@@ -43,8 +45,6 @@ export default function CreateContent() {
   const [userName, setUserName] = useState("User");
   const [topic, setTopic] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "multi">("multi");
-  
-  // NEW: State to track what the user wants to generate
   const [generateTypes, setGenerateTypes] = useState<string[]>(["text", "image"]); 
   
   const [generatedPost, setGeneratedPost] = useState<{
@@ -59,7 +59,6 @@ export default function CreateContent() {
   
   const [editedContent, setEditedContent] = useState("");
   const [selectedPublishPlatforms, setSelectedPublishPlatforms] = useState<string[]>([]);
-  const [showScheduler, setShowScheduler] = useState(false);
   const [trending, setTrending] = useState<any[]>([]);
   const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([]);
   
@@ -70,8 +69,6 @@ export default function CreateContent() {
     saving: false,
     publishing: false
   });
-
-  const platformLimit = 280;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -109,7 +106,6 @@ export default function CreateContent() {
     fetchData();
   }, [supabase]);
 
-  // Toggle selection for Text, Image, or Video
   const toggleType = (type: string) => {
     setGenerateTypes(prev => 
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
@@ -124,7 +120,6 @@ export default function CreateContent() {
     let currentPost: any = { id: Date.now(), platform: selectedPlatform, content: "", hashtags: [] };
 
     try {
-      // 1. Generate Text (Grok/Gemini)
       if (generateTypes.includes("text")) {
         const { data, error } = await supabase.functions.invoke('generate-post', {
           body: { topic, platform: selectedPlatform }
@@ -134,7 +129,6 @@ export default function CreateContent() {
         setEditedContent(data.content);
       }
 
-      // 2. Generate Image (Using your Fal API function)
       if (generateTypes.includes("image")) {
         const { data, error } = await supabase.functions.invoke('generate-image', {
           body: { prompt: topic }
@@ -143,7 +137,6 @@ export default function CreateContent() {
         currentPost = { ...currentPost, imageUrl: data.url, mediaPath: data.path, mediaType: 'image' };
       }
 
-      // 3. Generate Video (Assuming you'll add a generate-video function with Fal API)
       if (generateTypes.includes("video")) {
         const { data, error } = await supabase.functions.invoke('generate-video', {
           body: { prompt: topic, image_url: currentPost.imageUrl }
@@ -156,7 +149,7 @@ export default function CreateContent() {
       toast.success("Omnipost content ready!");
     } catch (e: any) {
       console.error("Generation Error:", e);
-      toast.error("Failed to generate. Check your Edge Functions.");
+      toast.error("Failed to generate content.");
     } finally {
       setIsLoading(prev => ({ ...prev, generating: false }));
     }
@@ -169,18 +162,30 @@ export default function CreateContent() {
 
     setIsLoading(prev => ({ ...prev, publishing: true }));
     
-    // We use Promise.allSettled so that if one platform fails, 
-    // it doesn't stop the others from trying to publish.
     try {
       const publishPromises = selectedPublishPlatforms.map(async (platform) => {
-        const functionName = `post-${platform.toLowerCase()}`;
+        const platformKey = platform.toLowerCase();
+        const functionName = `post-${platformKey}`;
+        
+        // Prepare platform-specific body mapping
+        const requestBody: any = {
+          mediaUrl: generatedPost.imageUrl,
+          mediaPath: generatedPost.mediaPath,
+        };
+
+        // Custom field mapping based on platform requirements
+        if (platformKey === 'facebook') {
+          requestBody.message = editedContent;
+        } else if (platformKey === 'instagram') {
+          requestBody.caption = editedContent;
+        } else if (platformKey === 'tiktok') {
+          requestBody.description = editedContent;
+        } else {
+          requestBody.content = editedContent; // Fallback for Twitter/others
+        }
         
         const { data, error } = await supabase.functions.invoke(functionName, {
-          body: { 
-            content: editedContent, 
-            mediaUrl: generatedPost.imageUrl,
-            mediaPath: generatedPost.mediaPath
-          }
+          body: requestBody
         });
 
         if (error) throw new Error(`${platform}: ${error.message}`);
@@ -198,7 +203,6 @@ export default function CreateContent() {
 
       if (successes.length > 0) {
         toast.success(`Successfully published to ${successes.length} platforms!`);
-        // Only clear state if at least one succeeded
         setGeneratedPost(null);
         setEditedContent("");
         setTopic("");
@@ -248,7 +252,6 @@ export default function CreateContent() {
                 className="min-h-[120px] border-border/50 resize-none text-sm text-white"
               />
               
-              {/* Omni-Selection Toggles */}
               <div className="flex gap-2 py-2">
                 <button 
                   onClick={() => toggleType("text")}
@@ -319,7 +322,6 @@ export default function CreateContent() {
               </div>
             ) : (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                {/* TEXT PREVIEW - Only shows if text was generated */}
                 {generateTypes.includes("text") && (
                   <div className="card-premium p-6 bg-surface-raised/20">
                     <div className="flex items-center justify-between mb-4">
@@ -338,7 +340,6 @@ export default function CreateContent() {
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* MEDIA PREVIEW */}
                   <div className="card-premium p-6 space-y-4 bg-surface-raised/20">
                     <h3 className="text-sm font-bold uppercase tracking-wider">Visual Preview</h3>
                     <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-border/50 flex items-center justify-center">
@@ -357,7 +358,6 @@ export default function CreateContent() {
                     </div>
                   </div>
 
-                  {/* PUBLISHING */}
                   <div className="card-premium p-6 flex flex-col bg-surface-raised/20">
                     <h3 className="text-sm font-bold uppercase tracking-wider mb-4">Publishing</h3>
                     <div className="flex-1 space-y-4">
@@ -397,4 +397,3 @@ export default function CreateContent() {
     </AppLayout>
   );
 }
-
