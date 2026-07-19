@@ -8,7 +8,7 @@ export async function GET(request: Request) {
 
   console.log("DEBUG: Callback triggered from origin:", origin);
 
-  // 1. Handle Webhook Verification (Keep this for Meta verification)
+  // 1. Handle Webhook Verification
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
@@ -27,7 +27,6 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
   
-  // A. Exchange code for session
   console.log("DEBUG: Exchanging code for session...");
   const { data, error: authError } = await supabase.auth.exchangeCodeForSession(code);
   
@@ -43,11 +42,8 @@ export async function GET(request: Request) {
     const user = data.user;
     const shortLivedToken = data.session.provider_token;
     
-    console.log("DEBUG: User authenticated:", user.email);
-    console.log("DEBUG: Provider token exists:", !!shortLivedToken);
-
     try {
-      // B. Exchange for Long-Lived Token (60 days)
+      // B. Exchange for Long-Lived User Token (60 days)
       console.log("DEBUG: Fetching long-lived token from Meta...");
       const params = new URLSearchParams({
         grant_type: 'fb_exchange_token',
@@ -56,60 +52,73 @@ export async function GET(request: Request) {
         fb_exchange_token: shortLivedToken!,
       });
 
-      const response = await fetch(
+      const tokenResponse = await fetch(
         `https://graph.facebook.com/v19.0/oauth/access_token?${params.toString()}`
       );
       
-      const tokenData = await response.json();
+      const tokenData = await tokenResponse.json();
+      if (tokenData.error) throw new Error(`Meta Token Error: ${tokenData.error.message}`);
+
+      const longLivedUserToken = tokenData.access_token;
+
+      // NEW STEP: Fetch Managed Pages to get real Page IDs and Page Access Tokens
+      console.log("DEBUG: Fetching managed pages...");
+      const pagesResponse = await fetch(
+        `https://graph.facebook.com/v19.0/me/accounts?access_token=${longLivedUserToken}`
+      );
       
-      if (tokenData.error) {
-        console.error("DEBUG: Meta API Error:", tokenData.error.message);
-        throw new Error(`Meta Token Error: ${tokenData.error.message}`);
+      const pagesData = await pagesResponse.json();
+      if (pagesData.error) throw new Error(`Fetch Pages Error: ${pagesData.error.message}`);
+
+      const pages = pagesData.data || [];
+      if (pages.length === 0) {
+        throw new Error("No Facebook Pages found. You must have a Facebook Page to post.");
       }
 
-      const longLivedToken = tokenData.access_token || shortLivedToken;
-      console.log("DEBUG: Long-lived token secured.");
+      // Logic: Pick the first page found (In the future, you can let users choose)
+      const selectedPage = pages[0];
+      const pageId = selectedPage.id;
+      const pageAccessToken = selectedPage.access_token; // This is the token needed to post as the page
+
+      console.log("DEBUG: Page secured:", selectedPage.name);
 
       // C. Ensure user exists in primary users table
-      console.log("DEBUG: Upserting user to primary table...");
       await upsertUserFromAuth(supabase, user);
 
       // D. Save to social_accounts table
-      console.log("DEBUG: Saving to social_accounts table...");
+      console.log("DEBUG: Saving Page credentials to social_accounts...");
       const { error: upsertError } = await supabase
         .from("social_accounts")
         .upsert({
           user_id: user.id,
           platform: "facebook", 
           provider: "facebook",
-          access_token: longLivedToken,
+          access_token: pageAccessToken, // We save the PAGE token, not the user token
+          page_id: pageId,               // The real Page ID
           is_connected: true,
           updated_at: new Date().toISOString(),
-          display_name: user.user_metadata.full_name,
+          display_name: selectedPage.name || user.user_metadata.full_name,
           username: user.user_metadata.user_name || user.email,
           metadata: {
             avatar_url: user.user_metadata.avatar_url,
-            facebook_user_id: user.user_metadata.provider_id
+            facebook_user_id: user.user_metadata.provider_id, // Keep user ID for reference
+            page_name: selectedPage.name,
+            category: selectedPage.category
           },
         }, {
           onConflict: 'user_id,platform'
         });
 
-      if (upsertError) {
-        console.error("DEBUG: Database Save Failed:", upsertError.message);
-        throw new Error(`Database Save Failed: ${upsertError.message}`);
-      }
+      if (upsertError) throw new Error(`Database Save Failed: ${upsertError.message}`);
 
       console.log("DEBUG: Success! Redirecting to accounts...");
       return NextResponse.redirect(`${origin}${nextPath}`);
 
     } catch (err: any) {
       console.error("DEBUG: Catch Block Triggered:", err.message);
-      // This will print the error directly on your screen so you can read it
       return new Response(JSON.stringify({ 
         message: "Process Failed", 
-        error: err.message,
-        stack: err.stack 
+        error: err.message 
       }), { 
         status: 500, 
         headers: { 'Content-Type': 'application/json' } 
@@ -117,6 +126,5 @@ export async function GET(request: Request) {
     }
   }
 
-  console.error("DEBUG: Session not found after exchange");
   return NextResponse.redirect(`${origin}/login?error=session_not_found`);
 }
