@@ -180,6 +180,7 @@ export default function CreateContent() {
 
         if (platformKey === 'facebook') {
           requestBody.message = editedContent;
+          requestBody.link = generatedPost.imageUrl;
         } else if (platformKey === 'instagram') {
           requestBody.caption = editedContent;
         } else if (platformKey === 'tiktok') {
