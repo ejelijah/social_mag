@@ -1,4 +1,4 @@
-// Using modern Deno.serve syntax and improved error reporting
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,73 +6,59 @@ const corsHeaders = {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS Preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const body = await req.json()
-    console.log("Received Body:", JSON.stringify(body, null, 2))
+    // 1. Initialize Supabase Client with Service Role (to bypass RLS for lookup)
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    const { message, link, page_id, access_token } = body
+    // 2. Get User ID from the Auth Header (passed automatically by Supabase client)
+    const authHeader = req.headers.get('Authorization')!
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
 
-    // Enhanced validation to tell you exactly what is missing
-    if (!page_id || !access_token) {
-      const missingFields = []
-      if (!page_id) missingFields.push("page_id")
-      if (!access_token) missingFields.push("access_token")
+    if (authError || !user) throw new Error("Unauthorized")
 
-      console.error(`Validation Error: Missing ${missingFields.join(" and ")}`)
-      
-      return new Response(
-        JSON.stringify({ 
-          error: `Missing required fields: ${missingFields.join(", ")}`,
-          received_keys: Object.keys(body) 
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
-    }
+    // 3. Parse request body
+    const { message, link } = await req.json()
 
-    const fbUrl = `https://graph.facebook.com/v20.0/${page_id}/feed`
-    console.log(`Posting to Facebook Page: ${page_id}`)
+    // 4. Fetch the Facebook credentials from the database
+    const { data: social, error: dbError } = await supabaseClient
+      .from('social_accounts')
+      .select('access_token, page_id')
+      .eq('user_id', user.id)
+      .eq('provider', 'facebook')
+      .single()
 
-    const response = await fetch(fbUrl, {
+    if (dbError || !social) throw new Error("Facebook account not connected.")
+
+    // 5. Post to Facebook
+    const fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/feed`
+    const fbResponse = await fetch(fbUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message,
         link,
-        access_token,
+        access_token: social.access_token,
       }),
     })
 
-    const result = await response.json()
-    console.log("Facebook Response Status:", response.status)
+    const result = await fbResponse.json()
 
-    return new Response(
-      JSON.stringify({
-        ok: response.ok,
-        fb_response: result
-      }), 
-      { 
-        status: response.status,
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    )
+    return new Response(JSON.stringify({ ok: fbResponse.ok, result }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: fbResponse.status,
+    })
 
   } catch (error) {
-    console.error("Critical Runtime Error:", error.message)
-    return new Response(
-      JSON.stringify({ error: "Internal Server Error", details: error.message }), 
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    )
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
+    })
   }
 })
+
 
