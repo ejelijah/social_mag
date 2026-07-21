@@ -34,9 +34,9 @@ const { data, error } = await supabase
 .upsert({
 id: user.id,
 email: user.email,
-full_name: user.user_metadata?.full_name,
-avatar_url: user.user_metadata?.avatar_url,
-updated_at: new Date().toISOString(),
+name: user.user_metadata?.full_name,
+image: user.user_metadata?.avatar_url,
+createAt: new Date().toISOString(),
 })
 .select() // This allows you to get the data back after the upsert
 .single(); // This ensures you get one object back instead of an array
