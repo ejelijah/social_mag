@@ -74,7 +74,7 @@ export default function AccountsPage() {
         .from("users")
         .select("plan, platform_limit")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (profError) throw profError;
 

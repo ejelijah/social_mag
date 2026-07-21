@@ -84,7 +84,7 @@ export default function CreateContent() {
             .from('users')
             .select('name')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
           
           if (profile?.name) {
             setUserName(profile.name.split(' ')[0]);
