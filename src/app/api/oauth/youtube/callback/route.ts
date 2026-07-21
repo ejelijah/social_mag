@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     cookieStore.delete('youtube_oauth_state');
     cookieStore.delete('youtube_code_verifier');
 
-    return NextResponse.redirect(new URL('/create', request.url));
+    return NextResponse.redirect(new URL('/dir/create', request.url));
   } catch (error) {
     console.error('YouTube OAuth Error:', error);
     return NextResponse.redirect(new URL('/dashboard?error=youtube_exchange_failed', request.url));
