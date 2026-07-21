@@ -18,10 +18,10 @@ export async function GET(request: Request) {
     // 1. Exchange Code for Short-Lived Token
     // Note: Instagram uses a specific endpoint for the initial exchange
     const shortLivedParams = new URLSearchParams({
-      client_id: process.env.INSTAGRAM_CLIENT_ID!,
-      client_secret: process.env.INSTAGRAM_CLIENT_SECRET!,
+      client_id: process.env.INSTAGRAM_APP_ID!,
+      client_secret: process.env.INSTAGRAM_APP_SECRET!,
       grant_type: "authorization_code",
-      redirect_uri: process.env.INSTAGRAM_REDIRECT_URI!, // Must MATCH Meta Console exactly
+      redirect_uri:"https://omnipost.one/api/oauth/instagram/callback", // Must MATCH Meta Console exactly
       code: code,
     });
 
