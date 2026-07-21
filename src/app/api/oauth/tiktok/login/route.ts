@@ -9,9 +9,9 @@ export async function GET(request: Request) {
   // Scopes required for OmniPost AI functionality
   const scopes = [
     "user.info.basic",
-    "video.upload",
-    "video.publish",
-    "video.list"
+    // "video.upload",
+    // "video.publish",
+    // "video.list"
   ].join(",");
 
   const tiktokAuthUrl = new URL("https://www.tiktok.com/v2/auth/authorize/");

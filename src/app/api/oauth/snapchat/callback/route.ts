@@ -29,9 +29,9 @@ export async function GET(request: Request) {
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: process.env.SNAP_REDIRECT_URI!.trim(),
-        client_id: process.env.SNAP_CLIENT_ID!.trim(),
-        client_secret: process.env.SNAP_CLIENT_SECRET!.trim(),
+        redirect_uri: process.env.SNAP_REDIRECT_URI!,
+        client_id: process.env.SNAP_CLIENT_ID!,
+        client_secret: process.env.SNAP_CLIENT_SECRET!,
         code_verifier: codeVerifier, // PKCE Verifier
       }),
     });
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     // 3. Save to Supabase
     await supabase.from('social_accounts').upsert({
       user_id: user.id,
-      provider_name: 'snapchat',
+      provider: 'snapchat',
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       updated_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     cookieStore.delete('snap_auth_state');
     cookieStore.delete('snap_code_verifier');
 
-    return NextResponse.redirect(new URL('/api/create', request.url));
+    return NextResponse.redirect(new URL('/dir/create', request.url));
 
   } catch (error: any) {
     console.error('OAuth Error:', error.message);
