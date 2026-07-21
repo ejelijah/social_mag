@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 
     if (upsertError) throw upsertError;
 
-    return NextResponse.redirect(`${origin}/dashboard/accounts?success=tiktok_connected`);
+    return NextResponse.redirect(`/dir/create`);
   } catch (error: any) {
     console.error("TikTok Auth Error:", error.message);
     return NextResponse.redirect(`${origin}/dashboard/accounts?error=tiktok_sync_failed`);
