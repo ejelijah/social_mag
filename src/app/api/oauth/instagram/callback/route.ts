@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const nextPath = "/dir/accounts";
+  const nextPath = "/dir/create";
 
   if (!code) {
     return NextResponse.redirect(`${origin}/dashboard?error=no_code_received`);
