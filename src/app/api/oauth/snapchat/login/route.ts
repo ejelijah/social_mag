@@ -35,7 +35,7 @@ export async function GET() {
   authUrl.searchParams.set("client_id", process.env.SNAP_CLIENT_ID!.trim());
   authUrl.searchParams.set("redirect_uri", process.env.SNAP_REDIRECT_URI!);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", "user.display_name user.bitmoji.avatar"); // Fixed scopes
+  authUrl.searchParams.set("scope", "https://auth.snapchat.com/oauth2/api/user.display_name https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar https://auth.snapchat.com/oauth2/api/user.external_id"); // Fixed scopes
   authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("code_challenge", codeChallenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
