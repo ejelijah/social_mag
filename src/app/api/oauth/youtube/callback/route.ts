@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
-import { platform } from 'os';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,13 +12,13 @@ export async function GET(request: Request) {
   const codeVerifier = cookieStore.get('youtube_code_verifier')?.value;
 
   if (!code || state !== storedState || !codeVerifier) {
-    return NextResponse.redirect(new URL('/dashboard?error=youtube_auth_failed', request.url));
+    return NextResponse.redirect(new URL('/dashboard?error=invalid_state_or_code', request.url));
   }
 
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("User session not found");
 
     // Exchange code for tokens
     const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -37,9 +36,12 @@ export async function GET(request: Request) {
 
     const tokens = await response.json();
 
-    if (!response.ok) throw new Error(JSON.stringify(tokens));
+    if (!response.ok) {
+      throw new Error(`Google Token Exchange Failed: ${tokens.error_description || tokens.error || JSON.stringify(tokens)}`);
+    }
 
     // Save to social_accounts
+    // FIX: Changed onConflict to 'user_id, platform' to match the data you are sending
     const { error: upsertError } = await supabase
       .from('social_accounts')
       .upsert({
@@ -47,18 +49,24 @@ export async function GET(request: Request) {
         platform: 'youtube',
         provider: 'youtube',
         access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token, // Google only sends this the FIRST time or if prompt=consent
+        refresh_token: tokens.refresh_token, 
+        is_connected: true,
         updated_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-      }, { onConflict: 'user_id, provider_name' });
+      }, { onConflict: 'user_id, platform' }); 
 
-    if (upsertError) throw upsertError;
+    if (upsertError) {
+      throw new Error(`Database Upsert Failed: ${upsertError.message}`);
+    }
 
     cookieStore.delete('youtube_oauth_state');
     cookieStore.delete('youtube_code_verifier');
 
     return NextResponse.redirect(new URL('/dir/create', request.url));
-  } catch (error) {
+  } catch (error: any) {
     console.error('YouTube OAuth Error:', error);
-    return NextResponse.redirect(new URL('/dashboard?error=youtube_exchange_failed', request.url));
+    
+    // This encodes the actual error message into the URL so you can read it in the browser
+    const errorMessage = encodeURIComponent(error.message || 'Unknown Error');
+    return NextResponse.redirect(new URL(`/dashboard?error=${errorMessage}`, request.url));
   }
 }
