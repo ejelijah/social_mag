@@ -34,12 +34,15 @@ export async function GET(request: Request) {
     });
 
     const tokens = await tokenResponse.json();
-
+    console.log("TikTok API Response:", tokens);
     if (!tokenResponse.ok) {
       // Extract specific TikTok error message if available
       const errorMessage = tokens.error_description || tokens.message || "Failed to exchange TikTok code";
       throw new Error(errorMessage);
     }
+    if (!tokens.access_token) {
+      throw new Error("TikTok returned a success response but no access_token was found. Response: " + JSON.stringify(tokens));
+  }
 
     // Save TikTok tokens to social_accounts table
     const { error: upsertError } = await supabase
@@ -54,7 +57,7 @@ export async function GET(request: Request) {
         updated_at: new Date().toISOString(),
         // TikTok tokens usually expire in 24 hours (86400 seconds)
         expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
-        username: "TikTok User", 
+        username: tokens.open_id || null, // TikTok's unique user identifier
       }, {
         onConflict: 'user_id,platform'
       });
