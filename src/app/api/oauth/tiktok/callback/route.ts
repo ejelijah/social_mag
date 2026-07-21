@@ -1,23 +1,23 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { upsertUserFromAuth } from "@/lib/users";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/dashboard/accounts?error=no_code`);
+    return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent("No authorization code provided by TikTok")}`);
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.redirect(`${origin}/login?error=unauthorized`);
-  }
 
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("User session not found. Please log in again.")}`);
+    }
+
     // Exchange code for Access Token
     const tokenResponse = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
       method: "POST",
@@ -29,14 +29,16 @@ export async function GET(request: Request) {
         client_secret: process.env.TIKTOK_CLIENT_SECRET!.trim(),
         code: code,
         grant_type: "authorization_code",
-        redirect_uri: `https://omnipost.one/api/oauth/tiktok/callback`,
+        redirect_url: `https://omnipost.one/api/oauth/tiktok/callback`,
       }),
     });
 
     const tokens = await tokenResponse.json();
 
     if (!tokenResponse.ok) {
-      throw new Error(tokens.error_description || "Failed to exchange TikTok code");
+      // Extract specific TikTok error message if available
+      const errorMessage = tokens.error_description || tokens.message || "Failed to exchange TikTok code";
+      throw new Error(errorMessage);
     }
 
     // Save TikTok tokens to social_accounts table
@@ -51,17 +53,20 @@ export async function GET(request: Request) {
         is_connected: true,
         updated_at: new Date().toISOString(),
         // TikTok tokens usually expire in 24 hours (86400 seconds)
-        expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-        username: "TikTok User", // You can fetch profile info with another API call if needed
+        expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
+        username: "TikTok User", 
       }, {
         onConflict: 'user_id,platform'
       });
 
-    if (upsertError) throw upsertError;
+    if (upsertError) {
+        throw new Error(`Database Error: ${upsertError.message}`);
+    }
 
-    return NextResponse.redirect(`/dir/create`);
+    return NextResponse.redirect(`${origin}/dir/create`);
   } catch (error: any) {
     console.error("TikTok Auth Error:", error.message);
-    return NextResponse.redirect(`${origin}/dashboard/accounts?error=tiktok_sync_failed`);
+    // Redirect back to the dashboard with the specific error message in the URL
+    return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent(error.message)}`);
   }
 }
