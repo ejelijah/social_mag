@@ -116,9 +116,6 @@ export async function GET(request: Request) {
               display_name: selectedPage.name || user.user_metadata.full_name,
               username: user.user_metadata.user_name || user.email,
               metadata: {
-                // avatar_url: user.user_metadata.avatar_url,
-                facebook_user_id: user.user_metadata.provider_id,
-                page_name: selectedPage.name,
                 category: selectedPage.category
               },
             }, {
