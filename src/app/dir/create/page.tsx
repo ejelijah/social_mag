@@ -193,6 +193,7 @@ export default function CreateContent() {
           body: requestBody
         });
 
+        // If there is an error, we prefix it with the platform name so we can identify it later
         if (error) throw new Error(`${platform}: ${error.message}`);
         return { platform, data };
       });
@@ -203,10 +204,36 @@ export default function CreateContent() {
       const successes = results.filter(r => r.status === 'fulfilled');
 
       if (failures.length > 0) {
-        failures.forEach((f: any) => toast.error(`Failed to post: ${f.reason}`));
+        failures.forEach((f: any) => {
+          const fullError = f.reason.message || String(f.reason);
+          const [platformName, ...errorParts] = fullError.split(':');
+          const errorMessage = errorParts.join(':').trim();
+
+          // Check if this is an authentication/token error
+          const isAuthError = 
+            errorMessage.toLowerCase().includes("expired") || 
+            errorMessage.toLowerCase().includes("reconnect") || 
+            errorMessage.toLowerCase().includes("not connected") ||
+            errorMessage.toLowerCase().includes("unauthorized");
+
+          if (isAuthError) {
+            toast.error(`${platformName} Connection Expired`, {
+              description: `Your ${platformName} session has ended. Please reconnect to continue posting.`,
+              action: {
+                label: "Reconnect",
+                onClick: () => {
+                  // This redirects the user to your specific OAuth login route
+                  window.location.href = `/api/oauth/${platformName.toLowerCase().trim()}/login`;
+                },
+              },
+              duration: 10000, // Keep toast visible longer so they can click
+            });
+          } else {
+            toast.error(`Failed to post to ${platformName}: ${errorMessage}`);
+          }
+        });
       }
 
-      // Logic: If everything succeeded with NO errors, show the success sign
       if (successes.length > 0 && failures.length === 0) {
         toast.success(`Successfully published to ${successes.length} platforms!`);
         setIsPublishedSuccessfully(true);
@@ -214,7 +241,6 @@ export default function CreateContent() {
         setEditedContent("");
         setTopic("");
       } else if (successes.length > 0) {
-        // Partial success (some failed), don't show full success screen yet
         toast.success(`Published to ${successes.length} platforms, but some failed.`);
       }
     } catch (e: any) {
@@ -224,6 +250,7 @@ export default function CreateContent() {
       setIsLoading(prev => ({ ...prev, publishing: false }));
     }
   }
+
 
   const resetForm = () => {
     setIsPublishedSuccessfully(false);
