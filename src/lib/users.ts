@@ -28,12 +28,19 @@ export function authUserToPublicRow(user: User): PublicUserRow {
   };
 }
 
-export async function upsertUserFromAuth(
-  supabase: SupabaseClient,
-  user: User
-): Promise<void> {
-  const row = authUserToPublicRow(user);
-  await supabase.from("users").upsert(row, { onConflict: "id" });
+export async function upsertUserFromAuth(supabase: any, user: any) {
+const { data, error } = await supabase
+.from("users")
+.upsert({
+id: user.id,
+email: user.email,
+full_name: user.user_metadata?.full_name,
+avatar_url: user.user_metadata?.avatar_url,
+updated_at: new Date().toISOString(),
+})
+.select() // This allows you to get the data back after the upsert
+.single(); // This ensures you get one object back instead of an array
+return { data, error }; // This removes the 'void' type error
 }
 
 export async function ensureUserRow(

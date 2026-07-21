@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { upsertUserFromAuth } from "@/lib/users";
 
+
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const nextPath = "/dir/accounts";
@@ -92,33 +94,38 @@ export async function GET(request: Request) {
 
       console.log("DEBUG: Page secured:", selectedPage.name);
 
-      // C. Ensure user exists in primary users table
-      await upsertUserFromAuth(supabase, user);
-
-      // D. Save to social_accounts table
-      console.log("DEBUG: Saving Page credentials to social_accounts...");
-      const { error: upsertError } = await supabase
-        .from("social_accounts")
-        .upsert({
-          user_id: user.id,
-          platform: "facebook", 
-          provider: "facebook",
-          access_token: pageAccessToken, // We save the PAGE token, not the user token
-          page_id: pageId,               // The real Page ID
-          is_connected: true,
-          updated_at: new Date().toISOString(),
-          display_name: selectedPage.name || user.user_metadata.full_name,
-          username: user.user_metadata.user_name || user.email,
-          metadata: {
-            avatar_url: user.user_metadata.avatar_url,
-            facebook_user_id: user.user_metadata.provider_id, // Keep user ID for reference
-            page_name: selectedPage.name,
-            category: selectedPage.category
-          },
-        }, {
-          onConflict: 'user_id,platform'
-        });
-
+          // C. Ensure user exists in primary users table and get the record back
+          const { data: dbUser, error: dbError } = await upsertUserFromAuth(supabase, user);
+      
+          if (dbError || !dbUser) {
+            throw new Error(`Failed to sync user: ${dbError?.message}`);
+          }
+    
+          // D. Save to social_accounts table
+          console.log("DEBUG: Saving Page credentials to social_accounts...");
+          const { error: upsertError } = await supabase
+            .from("social_accounts")
+            .upsert({
+              user_id: dbUser.id,           // Use the ID returned from your users table
+              platform: "facebook", 
+              provider: "facebook",
+              access_token: pageAccessToken,
+              page_id: pageId,
+              is_connected: true,
+              updated_at: new Date().toISOString(),
+              display_name: selectedPage.name || user.user_metadata.full_name,
+              username: user.user_metadata.user_name || user.email,
+              metadata: {
+                avatar_url: user.user_metadata.avatar_url,
+                facebook_user_id: user.user_metadata.provider_id,
+                page_name: selectedPage.name,
+                category: selectedPage.category
+              },
+            }, {
+              // This allows one entry per platform per user
+              onConflict: 'user_id,platform' 
+            });
+    
       if (upsertError) throw new Error(`Database Save Failed: ${upsertError.message}`);
 
       console.log("DEBUG: Success! Redirecting to accounts...");
