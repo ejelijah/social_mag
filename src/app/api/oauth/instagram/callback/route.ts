@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     // 2. Exchange for Long-Lived Token (60 Days)
     // This uses the Graph API endpoint
     const longLivedRes = await fetch(
-      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_CLIENT_SECRET}&access_token=${shortLivedToken}`
+      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortLivedToken}`
     );
 
     const longLivedData = await longLivedRes.json();
