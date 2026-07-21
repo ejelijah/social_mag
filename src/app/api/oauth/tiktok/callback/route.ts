@@ -51,7 +51,7 @@ export async function GET(request: Request) {
         user_id: user.id,
         platform: "tiktok",
         provider: "tiktok",
-        access_token: tokens.data?.access_token,
+        access_token: tokens.access_token,
         refresh_token: tokens.refresh_token || null,
         is_connected: true,
         updated_at: new Date().toISOString(),
