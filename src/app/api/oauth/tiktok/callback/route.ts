@@ -29,7 +29,7 @@ export async function GET(request: Request) {
         client_secret: process.env.TIKTOK_CLIENT_SECRET!.trim(),
         code: code,
         grant_type: "authorization_code",
-        redirect_uri: process.env.TIKTOK_REDIRECT_URI!
+        redirect_uri: "https://omnipost.one/dashboard/accounts"
       }),
     });
 
