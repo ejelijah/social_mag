@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
+import { platform } from 'os';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -43,7 +44,8 @@ export async function GET(request: Request) {
       .from('social_accounts')
       .upsert({
         user_id: user.id,
-        provider_name: 'youtube',
+        platform: 'youtube',
+        provider: 'youtube',
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token, // Google only sends this the FIRST time or if prompt=consent
         updated_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
@@ -54,7 +56,7 @@ export async function GET(request: Request) {
     cookieStore.delete('youtube_oauth_state');
     cookieStore.delete('youtube_code_verifier');
 
-    return NextResponse.redirect(new URL('app/create/page', request.url));
+    return NextResponse.redirect(new URL('/create', request.url));
   } catch (error) {
     console.error('YouTube OAuth Error:', error);
     return NextResponse.redirect(new URL('/dashboard?error=youtube_exchange_failed', request.url));
