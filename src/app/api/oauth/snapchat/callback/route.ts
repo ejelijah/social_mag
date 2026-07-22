@@ -70,7 +70,6 @@ export async function GET(request: Request) {
     const { error: upsertError } = await supabase
       .from('social_accounts')
       .upsert({
-        user_id: user.id,
         platform: 'snapchat',
         provider: 'snapchat',
         access_token: tokens.access_token,

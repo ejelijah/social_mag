@@ -105,8 +105,7 @@ export async function GET(request: Request) {
           console.log("DEBUG: Saving Page credentials to social_accounts...");
           const { error: upsertError } = await supabase
             .from("social_accounts")
-            .upsert({
-              user_id: dbUser.id,           // Use the ID returned from your users table
+            .upsert({          // Use the ID returned from your users table
               platform: "facebook", 
               provider: "facebook",
               access_token: pageAccessToken,

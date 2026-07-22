@@ -75,7 +75,6 @@ export async function GET(request: Request) {
     const { error: upsertError } = await supabase
     .from('social_accounts')
     .upsert({
-      user_id: user.id,
       platform: 'twitter',
       is_connected: true, // Changed to snake_case to match standard DB practice
 
