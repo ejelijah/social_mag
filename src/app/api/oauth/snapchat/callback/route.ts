@@ -64,6 +64,7 @@ export async function GET(request: Request) {
     if (!response.ok) {
       throw new Error(tokens.error_description || tokens.error || "Snapchat token exchange failed");
     }
+    const userData = await response.json();
 
     // 4. Save to Supabase
     const { error: upsertError } = await supabase
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
         is_connected: true,
         updated_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-        username: "Snapchat User", 
+        username: userData.data.me.display_name, // Snapchat username if available
       }, { 
         onConflict: 'user_id,platform' 
       });

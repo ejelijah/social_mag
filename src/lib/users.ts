@@ -36,7 +36,6 @@ id: user.id,
 email: user.email,
 name: user.user_metadata?.full_name,
 image: user.user_metadata?.avatar_url,
-createAt: new Date().toISOString(),
 })
 .select() // This allows you to get the data back after the upsert
 .single(); // This ensures you get one object back instead of an array

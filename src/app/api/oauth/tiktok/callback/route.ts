@@ -44,6 +44,7 @@ export async function GET(request: Request) {
       throw new Error("TikTok returned a success response but no access_token was found. Response: " + JSON.stringify(tokens));
   }
 
+
     // Save TikTok tokens to social_accounts table
     const { error: upsertError } = await supabase
       .from("social_accounts")
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
         updated_at: new Date().toISOString(),
         // TikTok tokens usually expire in 24 hours (86400 seconds)
         expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
-        username: tokens.open_id || null, // TikTok's unique user identifier
+        username: user.user_metadata?.tiktok_username || "TikTok User", // Placeholder if username is not available
       }, {
         onConflict: 'user_id,platform'
       });
