@@ -59,28 +59,34 @@ export async function GET(request: Request) {
       throw new Error(`Snapchat returned non-JSON response: ${textError.substring(0, 100)}`);
     }
 
-    const tokens = await response.json();
+ // 1. Read the JSON once
+const responseData = await response.json();
 
-    if (!response.ok) {
-      throw new Error(tokens.error_description || tokens.error || "Snapchat token exchange failed");
-    }
-    const userData = await response.json();
+if (!response.ok) {
+  throw new Error(responseData.error_description || responseData.error || "Snapchat token exchange failed");
+}
 
-    // 4. Save to Supabase
-    const { error: upsertError } = await supabase
-      .from('social_accounts')
-      .upsert({
-        platform: 'snapchat',
-        provider: 'snapchat',
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token || null,
-        is_connected: true,
-        updated_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-        username: userData.data.me.display_name, // Snapchat username if available
-      }, { 
-        onConflict: 'user_id,platform' 
-      });
+// 2. Use the data from that single variable
+const tokens = responseData;
+const userData = responseData; // If the user info is in the same response
+
+// 3. Save to Supabase
+const { error: upsertError } = await supabase
+  .from('social_accounts')
+  .upsert({
+    platform: 'snapchat',
+    provider: 'snapchat',
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token || null,
+    is_connected: true,
+    updated_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
+    // Access the property from the already parsed object
+    username: responseData.data?.me?.display_name || 'Snapchat User', 
+  }, { 
+    onConflict: 'user_id,platform' 
+  });
+
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
   
