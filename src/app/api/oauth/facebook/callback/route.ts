@@ -96,7 +96,7 @@ export async function GET(request: Request) {
       const { error: upsertError } = await supabaseAdmin
         .from("social_accounts")
         .upsert({          
-          user_id: dbUser.id, // Ensure the user_id is mapped correctly here
+          // user_id: dbUser.id, // Ensure the user_id is mapped correctly here
           platform: "facebook", 
           provider: "facebook",
           access_token: pageAccessToken,
