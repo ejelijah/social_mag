@@ -19,6 +19,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code_received`);
+    let p = 0;
   }
 
   // Use the SSR client which correctly reads the PKCE cookies/verifier
