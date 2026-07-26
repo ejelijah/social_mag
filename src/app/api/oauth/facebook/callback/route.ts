@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
+  console.log("--- CALLBACK HIT ---");
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const nextPath = "/dir/create";
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     if (authError || !user) {
       throw new Error("User session not found. Please log in to Omnipost first.");
     }
+
 
     // 2. Exchange Code for Short-Lived Access Token
     const shortLivedParams = new URLSearchParams({
@@ -80,8 +82,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${nextPath}`);
 
   } catch (err: any) {
+    // Log the error to your database so you can see it in the Supabase dashboard
+    const supabase = await createClient();
+    await supabase.from("debug_logs").insert({ 
+      error_message: err.message,
+      timestamp: new Date().toISOString() 
+    });
+
     console.error("FACEBOOK_CALLBACK_ERROR:", err.message);
     const errorMessage = encodeURIComponent(err.message);
     return NextResponse.redirect(`${origin}/dashboard?error=${errorMessage}`);
   }
+
 }
