@@ -14,33 +14,24 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     
-    // 1. Check for User Session
-    // If this fails, it means you aren't logged into your app when you try to connect.
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error("User session not found. Please log in to Omnipost first.");
-    }
-
-
-    // 2. Exchange Code for Short-Lived Access Token
-    const shortLivedParams = new URLSearchParams({
-      client_id: process.env.FACEBOOK_APP_ID!,
-      client_secret: process.env.FACEBOOK_APP_SECRET!,
-      redirect_uri: "https://omnipost.one/api/oauth/facebook/callback", 
-      code: code,
-    });
-    console.log("Params being sent:", shortLivedParams.toString());
-
-    const shortLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${shortLivedParams.toString()}`);
-    const shortLivedData = await shortLivedRes.json();
+    // 1. Exchange the Supabase Code for a Session
+    // This consumes the 'code' from the URL and logs the user in.
+    // It also retrieves the Facebook Access Token (provider_token).
+    const { data, error: authError } = await supabase.auth.exchangeCodeForSession(code);
     
-    if (!shortLivedRes.ok) {
-      throw new Error(`Facebook Exchange Failed: ${shortLivedData.error?.message || "Invalid Secret or Code"}`);
+    if (authError || !data.session) {
+      throw new Error(`Supabase Auth Error: ${authError?.message || "Failed to exchange code for session"}`);
     }
 
-    const shortLivedToken = shortLivedData.access_token;
+    const user = data.session.user;
+    const shortLivedToken = data.session.provider_token; // This is the Facebook token!
 
-    // 3. Exchange for Long-Lived Token (60 Days)
+    if (!shortLivedToken) {
+      throw new Error("Facebook provider token not found in session. Ensure Facebook login is configured correctly in Supabase.");
+    }
+
+    // 2. Exchange for Long-Lived Token (60 Days)
+    // We take the token Supabase gave us and ask Facebook to make it last 60 days.
     const longLivedParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: process.env.FACEBOOK_APP_ID!,
@@ -50,21 +41,21 @@ export async function GET(request: Request) {
 
     const longLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${longLivedParams.toString()}`);
     const longLivedData = await longLivedRes.json();
-    if (!longLivedRes.ok) throw new Error("Failed to upgrade to long-lived Facebook token.");
+    
+    if (!longLivedRes.ok) {
+      throw new Error(`Failed to upgrade to long-lived Facebook token: ${longLivedData.error?.message}`);
+    }
 
     const longLivedToken = longLivedData.access_token;
 
-    // 4. Identify the Facebook Account (CRITICAL FOR DEBUGGING)
+    // 3. Identify the Facebook Account
     const fbProfileRes = await fetch(
-      `https://graph.facebook.com/v20.0/me?fields=id,name,email&access_token=${longLivedToken}`
+      `https://graph.facebook.com/v20.0/me?fields=id,name&access_token=${longLivedToken}`
     );
     const fbProfile = await fbProfileRes.json();
-
-    // THIS LOG WILL SHOW YOU EXACTLY WHICH ACCOUNT IS CONNECTING
     console.log("CONNECTING FACEBOOK ACCOUNT:", fbProfile.name, fbProfile.id);
 
-    // 5. Save to social_accounts
-    // I removed the platform_user_id and platform_user_name since you said you don't have them.
+    // 4. Save to social_accounts
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
@@ -79,11 +70,10 @@ export async function GET(request: Request) {
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
 
-    // 6. Final Redirect
+    // 5. Final Redirect
     return NextResponse.redirect(`${origin}${nextPath}`);
 
   } catch (err: any) {
-    // Log the error to your database so you can see it in the Supabase dashboard
     const supabase = await createClient();
     await supabase.from("debug_logs").insert({ 
       error_message: err.message,
@@ -94,5 +84,4 @@ export async function GET(request: Request) {
     const errorMessage = encodeURIComponent(err.message);
     return NextResponse.redirect(`${origin}/dashboard?error=${errorMessage}`);
   }
-
 }
