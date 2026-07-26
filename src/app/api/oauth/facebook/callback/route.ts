@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     // 2. Exchange Code for Short-Lived Access Token
     const shortLivedParams = new URLSearchParams({
-      client_id: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+      client_id: process.env.FACEBOOK_APP_ID!,
       client_secret: process.env.FACEBOOK_APP_SECRET!,
       redirect_uri: `${origin}/api/oauth/facebook/callback`, 
       code: code,
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     // 3. Exchange for Long-Lived Token (60 Days)
     const longLivedParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
-      client_id: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!,
+      client_id: process.env.FACEBOOK_APP_ID!,
       client_secret: process.env.FACEBOOK_APP_SECRET!,
       fb_exchange_token: shortLivedToken,
     });
