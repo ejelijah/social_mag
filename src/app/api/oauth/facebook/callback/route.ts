@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       redirect_uri: "https://omnipost.one/api/oauth/facebook/callback", 
       code: code,
     });
+    console.log("Params being sent:", shortLivedParams.toString());
 
     const shortLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${shortLivedParams.toString()}`);
     const shortLivedData = await shortLivedRes.json();
