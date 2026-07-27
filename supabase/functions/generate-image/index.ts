@@ -6,15 +6,26 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Handle CORS preflight requests
+  console.log(`Incoming request: ${req.method}`)
+
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 2. Parse the body inside the try block
-    const { prompt } = await req.json()
+    // Debug: Read raw text first to see if it's empty
+    const rawBody = await req.text()
+    console.log("Raw Request Body:", rawBody)
+
+    if (!rawBody) {
+      throw new Error("Request body is empty")
+    }
+
+    const { prompt } = JSON.parse(rawBody)
     const GOOGLE_KEY = Deno.env.get('GEMEINI_API_KEY')
+
+    console.log(`Calling Gemini for prompt: ${prompt}`)
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_KEY}`, {
       method: 'POST',
@@ -24,30 +35,26 @@ serve(async (req) => {
       })
     })
 
-    const data = await response.json()
-    
-    // Extract the image URL or base64 from Gemini's response
+    // Debug: Check external API response
+    const responseText = await response.text()
+    console.log("Gemini Raw Response:", responseText)
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error (${response.status}): ${responseText}`)
+    }
+
+    const data = JSON.parse(responseText)
     const imageUrl = data.candidates[0].content.parts[0].text 
 
     return new Response(
       JSON.stringify({ imageUrl }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          "Content-Type": "application/json" 
-        } 
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   } catch (error) {
+    console.error("Function Error:", error.message)
     return new Response(
-      JSON.stringify({ error: error.message }), 
-      { 
-        status: 500, 
-        headers: { 
-          ...corsHeaders, 
-          "Content-Type": "application/json" 
-        } 
-      }
+      JSON.stringify({ error: error.message, stack: error.stack }), 
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   }
 })

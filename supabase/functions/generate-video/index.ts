@@ -6,15 +6,26 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Handle CORS preflight requests
+  console.log(`Incoming request: ${req.method}`)
+
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 2. Parse the body inside the try block
-    const { imageUrl } = await req.json()
+    // Debug: Read raw text first
+    const rawBody = await req.text()
+    console.log("Raw Request Body:", rawBody)
+
+    if (!rawBody) {
+      throw new Error("Request body is empty")
+    }
+
+    const { imageUrl } = JSON.parse(rawBody)
     const FAL_KEY = Deno.env.get('FAL_KEY')
+
+    console.log(`Calling Fal.ai for image: ${imageUrl}`)
 
     const response = await fetch("https://queue.fal.run/fal-ai/minimax-video/image-to-video", {
       method: "POST",
@@ -25,27 +36,25 @@ serve(async (req) => {
       body: JSON.stringify({ image_url: imageUrl }),
     })
 
-    const data = await response.json()
+    // Debug: Check external API response
+    const responseText = await response.text()
+    console.log("Fal.ai Raw Response:", responseText)
+
+    if (!response.ok) {
+      throw new Error(`Fal.ai API error (${response.status}): ${responseText}`)
+    }
+
+    const data = JSON.parse(responseText)
 
     return new Response(
       JSON.stringify({ videoRequestId: data.request_id }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          "Content-Type": "application/json" 
-        } 
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   } catch (error) {
+    console.error("Function Error:", error.message)
     return new Response(
-      JSON.stringify({ error: error.message }), 
-      { 
-        status: 500, 
-        headers: { 
-          ...corsHeaders, 
-          "Content-Type": "application/json" 
-        } 
-      }
+      JSON.stringify({ error: error.message, stack: error.stack }), 
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   }
 })
