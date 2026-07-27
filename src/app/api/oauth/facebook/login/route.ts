@@ -1,39 +1,25 @@
-import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
-
 export async function GET(request: Request) {
-  const { origin } = new URL(request.url);
-  const supabase = await createClient();
-  
-  const redirectUri = `${origin}/api/oauth/facebook/callback`;
-
-  // --- DEBUG MODE: Uncomment the block below to see the origin in your browser ---
-
-//   return new Response(JSON.stringify({ 
-//     origin: origin, 
-//     fullRedirectUri: redirectUri 
-//   }), {
-//     headers: { "Content-Type": "application/json" },
-//   });
-// }
-  // ------------------------------------------------------------------------------
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "facebook",
-    options: {
-      redirectTo: redirectUri,
-      // Strictly Facebook Page permissions
-      scopes: "public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts",
-    },
-  });
-
-  if (error) {
-    return NextResponse.redirect(`${origin}/dashboard/accounts?error=${error.message}`);
-  }
-
-  if (data.url) {
-    return NextResponse.redirect(data.url);
-  }
-
-  return NextResponse.redirect(`${origin}/dashboard/accounts?error=No+URL+returned`);
+const { origin } = new URL(request.url);
+// 1. Define your credentials
+const clientID = process.env.FACEBOOK_APP_ID;
+// 2. Hardcode the Redirect URI to ensure it matches your Meta Dashboard 100%
+const redirectUri = "https://omnipost.one/api/oauth/facebook/callback";
+// 3. Define the scopes (Permissions)
+const scopes = [
+"public_profile",
+"email",
+"pages_show_list",
+"pages_read_engagement",
+"pages_manage_posts"
+].join(",");
+// 4. Construct the DIRECT Facebook Login URL
+// This bypasses Supabase Auth so it won't "steal" your session or the code.
+const facebookAuthUrl = new URL("https://www.facebook.com/v20.0/dialog/oauth");
+facebookAuthUrl.searchParams.set("client_id", clientID!);
+facebookAuthUrl.searchParams.set("redirect_uri", redirectUri);
+facebookAuthUrl.searchParams.set("response_type", "code");
+facebookAuthUrl.searchParams.set("scope", scopes);
+// 5. Send the user straight to Facebook
+return NextResponse.redirect(facebookAuthUrl.toString());
 }
