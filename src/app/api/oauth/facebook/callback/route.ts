@@ -2,107 +2,77 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
-  console.log("--- FACEBOOK CALLBACK HIT (POST METHOD) ---");
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const nextPath = "/dir/create";
+  
+  // FIX 1: Stop Netlify/Next.js from "pre-fetching" and killing the code
+  if (request.headers.get("purpose") === "prefetch") {
+    return new Response(null, { status: 204 });
+  }
+
+  // FIX 2: Hardcode your production domain to avoid Netlify URL mismatches
+  const REDIRECT_URI = "https://omnipost.one/api/oauth/facebook/callback";
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/dashboard?error=no_code_received`);
+    return NextResponse.redirect("https://omnipost.one/dashboard?error=no_code");
   }
 
   try {
     const supabase = await createClient();
+
+    // 1. Get the current user BEFORE we talk to Facebook
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      throw new Error("You must be logged in to connect a Facebook account.");
-    }
+    if (userError || !user) throw new Error("User not found. Please log in again.");
 
-    const currentUserId = user.id;
-    // 1. Exchange the code for a Short-Lived Access Token using POST
-    // This bypasses Supabase Auth to prevent the session "glitch"
-    const shortLivedParams = new URLSearchParams({
-      client_id: process.env.FACEBOOK_APP_ID!,
-      client_secret: process.env.FACEBOOK_APP_SECRET!,
-      redirect_uri: 'https://omnipost.one/api/oauth/facebook/callback', // MUST match Meta Dashboard exactly
-      code: code, // The code from the URL
-    });
+    console.log("DEBUG: Exchanging code for user:", user.id);
 
-    console.log("Facebook Short-Lived Token Request Params:", shortLivedParams.toString());
-
+    // 2. Manual POST exchange (Bypassing Supabase Auth to stop the "Glitch")
     const tokenResponse = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: shortLivedParams.toString(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.FACEBOOK_APP_ID!,
+        client_secret: process.env.FACEBOOK_APP_SECRET!,
+        redirect_uri: REDIRECT_URI, // MUST MATCH META DASHBOARD EXACTLY
+        code: code,
+      }),
     });
 
     const tokenData = await tokenResponse.json();
-    console.log("Facebook Token Data:", tokenData);
 
     if (tokenData.error) {
-      throw new Error(`Facebook Short-Lived Token Error: ${tokenData.error.message}`);
+      console.error("META API ERROR:", tokenData.error);
+      throw new Error(`Facebook Error: ${tokenData.error.message}`);
     }
 
-    const shortLivedToken = tokenData.access_token;
+    const accessToken = tokenData.access_token;
 
-    // 2. Exchange for Long-Lived Token (60 Days) using POST
-    const longLivedParams = new URLSearchParams({
-      grant_type: "fb_exchange_token",
-      client_id: process.env.FACEBOOK_APP_ID!,
-      client_secret: process.env.FACEBOOK_APP_SECRET!,
-      fb_exchange_token: shortLivedToken,
-    });
-
-    const longLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token`, {
-      method: "POST",
-      body: longLivedParams,
-    });
-
-    const longLivedData = await longLivedRes.json();
-    
-    if (!longLivedRes.ok) {
-      throw new Error(`Failed to upgrade to long-lived token: ${longLivedData.error?.message}`);
-    }
-
-    const longLivedToken = longLivedData.access_token;
-
-    // 3. Identify the Facebook Account
-    const fbProfileRes = await fetch(
-      `https://graph.facebook.com/v20.0/me?fields=id,name&access_token=${longLivedToken}`
-    );
+    // 3. Get the Facebook Profile
+    const fbProfileRes = await fetch(`https://graph.facebook.com/v20.0/me?fields=id,name&access_token=${accessToken}`);
     const fbProfile = await fbProfileRes.json();
 
-    // 4. Save to social_accounts
-    // Because we didn't use supabase.auth, the current session is preserved.
-    // Your SQL function will correctly use the original user's ID.
-    const { error: upsertError } = await supabase
+    // 4. Upsert into your table using the ORIGINAL User ID (Prevents the Overwrite)
+    const { error: dbError } = await supabase
       .from("social_accounts")
       .upsert({
-        user_id: currentUserId,
+        user_id: user.id, // This ensures the account links to the right person
         platform: "facebook",
-        access_token: longLivedToken,
+        access_token: accessToken,
         is_connected: true,
         display_name: fbProfile.name,
         username: fbProfile.id,
         provider: "facebook",
-        metadata: JSON.stringify(fbProfile),
-        page_id: fbProfile.id,
-        expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id,platform'
       });
 
-    if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
+    if (dbError) throw new Error(dbError.message);
 
-    return NextResponse.redirect(`${origin}${nextPath}`);
+    return NextResponse.redirect("https://omnipost.one/dir/create");
 
   } catch (err: any) {
-    console.error("FACEBOOK_CALLBACK_ERROR:", err.message);
-    const errorMessage = encodeURIComponent(err.message);
-    return NextResponse.redirect(`${origin}/dashboard?error=${errorMessage}`);
+    console.error("CRITICAL ERROR:", err.message);
+    return NextResponse.redirect(`https://omnipost.one/dashboard?error=${encodeURIComponent(err.message)}`);
   }
 }
