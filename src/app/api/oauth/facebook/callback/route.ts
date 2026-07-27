@@ -13,7 +13,13 @@ export async function GET(request: Request) {
 
   try {
     const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      throw new Error("You must be logged in to connect a Facebook account.");
+    }
 
+    const currentUserId = user.id;
     // 1. Exchange the code for a Short-Lived Access Token using POST
     // This bypasses Supabase Auth to prevent the session "glitch"
     const shortLivedParams = new URLSearchParams({
@@ -75,6 +81,7 @@ export async function GET(request: Request) {
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
+        user_id: currentUserId,
         platform: "facebook",
         access_token: longLivedToken,
         is_connected: true,
@@ -86,7 +93,7 @@ export async function GET(request: Request) {
         expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: 'platform'
+        onConflict: 'user_id,platform'
       });
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
