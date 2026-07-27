@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const shortLivedParams = new URLSearchParams({
       client_id: process.env.FACEBOOK_APP_ID!,
       client_secret: process.env.FACEBOOK_APP_SECRET!,
-      redirect_uri: `${origin}/api/oauth/facebook/callback`,
+      redirect_uri: 'https://omnipost.one/api/oauth/facebook/callback',
       code: code,
     });
 
