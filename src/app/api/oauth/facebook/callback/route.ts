@@ -19,13 +19,18 @@ export async function GET(request: Request) {
     const shortLivedParams = new URLSearchParams({
       client_id: process.env.FACEBOOK_APP_ID!,
       client_secret: process.env.FACEBOOK_APP_SECRET!,
-      redirect_uri: 'https://omnipost.one/api/oauth/facebook/callback',
-      code: code,
+      redirect_uri: 'https://omnipost.one/api/oauth/facebook/callback', // MUST match Meta Dashboard exactly
+      code: code, // The code from the URL
     });
+
+    console.log("Facebook Short-Lived Token Request Params:", shortLivedParams.toString());
 
     const tokenResponse = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token`, {
       method: "POST",
-      body: shortLivedParams,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: shortLivedParams.toString(),
     });
 
     const tokenData = await tokenResponse.json();
