@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
-  console.log("--- CALLBACK HIT ---");
+  console.log("--- FACEBOOK CALLBACK HIT ---");
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const nextPath = "/dir/create";
@@ -13,25 +13,23 @@ export async function GET(request: Request) {
 
   try {
     const supabase = await createClient();
-    
-    // 1. Exchange the Supabase Code for a Session
-    // This consumes the 'code' from the URL and logs the user in.
-    // It also retrieves the Facebook Access Token (provider_token).
-    const { data, error: authError } = await supabase.auth.exchangeCodeForSession(code);
-    
-    if (authError || !data.session) {
-      throw new Error(`Supabase Auth Error: ${authError?.message || "Failed to exchange code for session"}`);
+
+    // 1. MANUALLY exchange the code for a Facebook Access Token
+    // We do NOT use supabase.auth.exchangeCodeForSession here.
+    // This keeps the original user logged in and prevents the "glitch".
+    const tokenResponse = await fetch(
+      `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${process.env.FACEBOOK_APP_ID}&redirect_uri=${origin}/api/oauth/facebook/callback&client_secret=${process.env.FACEBOOK_APP_SECRET}&code=${code}`
+    );
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      throw new Error(`Facebook Token Error: ${tokenData.error.message}`);
     }
 
-    const user = data.session.user;
-    const shortLivedToken = data.session.provider_token; // This is the Facebook token!
-
-    if (!shortLivedToken) {
-      throw new Error("Facebook provider token not found in session. Ensure Facebook login is configured correctly in Supabase.");
-    }
+    const shortLivedToken = tokenData.access_token;
 
     // 2. Exchange for Long-Lived Token (60 Days)
-    // We take the token Supabase gave us and ask Facebook to make it last 60 days.
     const longLivedParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: process.env.FACEBOOK_APP_ID!,
@@ -43,7 +41,7 @@ export async function GET(request: Request) {
     const longLivedData = await longLivedRes.json();
     
     if (!longLivedRes.ok) {
-      throw new Error(`Failed to upgrade to long-lived Facebook token: ${longLivedData.error?.message}`);
+      throw new Error(`Failed to upgrade token: ${longLivedData.error?.message}`);
     }
 
     const longLivedToken = longLivedData.access_token;
@@ -53,33 +51,32 @@ export async function GET(request: Request) {
       `https://graph.facebook.com/v20.0/me?fields=id,name&access_token=${longLivedToken}`
     );
     const fbProfile = await fbProfileRes.json();
-    console.log("CONNECTING FACEBOOK ACCOUNT:", fbProfile.name, fbProfile.id);
 
     // 4. Save to social_accounts
+    // Your SQL function will now work perfectly because auth.uid() 
+    // still points to your ORIGINAL user.
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
-        // user_id: user.id, 
         platform: "facebook",
         access_token: longLivedToken,
         is_connected: true,
+        display_name: fbProfile.name,
+        username: fbProfile.id,
+        provider: "facebook",
+        metadata: JSON.stringify(fbProfile),
+        page_id: fbProfile.id,
+        expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: 'user_id,platform'
+        onConflict: 'platform'
       });
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
 
-    // 5. Final Redirect
     return NextResponse.redirect(`${origin}${nextPath}`);
 
   } catch (err: any) {
-    const supabase = await createClient();
-    await supabase.from("debug_logs").insert({ 
-      error_message: err.message,
-      timestamp: new Date().toISOString() 
-    });
-
     console.error("FACEBOOK_CALLBACK_ERROR:", err.message);
     const errorMessage = encodeURIComponent(err.message);
     return NextResponse.redirect(`${origin}/dashboard?error=${errorMessage}`);
