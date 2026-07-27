@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     });
 
     const tokenData = await tokenResponse.json();
+    console.log("Facebook Token Data:", tokenData);
 
     if (tokenData.error) {
       throw new Error(`Facebook Short-Lived Token Error: ${tokenData.error.message}`);
