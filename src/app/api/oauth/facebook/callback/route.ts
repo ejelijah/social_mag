@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
-  console.log("--- FACEBOOK CALLBACK HIT ---");
+  console.log("--- FACEBOOK CALLBACK HIT (POST METHOD) ---");
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const nextPath = "/dir/create";
@@ -14,22 +14,29 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
 
-    // 1. MANUALLY exchange the code for a Facebook Access Token
-    // We do NOT use supabase.auth.exchangeCodeForSession here.
-    // This keeps the original user logged in and prevents the "glitch".
-    const tokenResponse = await fetch(
-      `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${process.env.FACEBOOK_APP_ID}&redirect_uri=${origin}/api/oauth/facebook/callback&client_secret=${process.env.FACEBOOK_APP_SECRET}&code=${code}`
-    );
+    // 1. Exchange the code for a Short-Lived Access Token using POST
+    // This bypasses Supabase Auth to prevent the session "glitch"
+    const shortLivedParams = new URLSearchParams({
+      client_id: process.env.FACEBOOK_APP_ID!,
+      client_secret: process.env.FACEBOOK_APP_SECRET!,
+      redirect_uri: `${origin}/api/oauth/facebook/callback`,
+      code: code,
+    });
+
+    const tokenResponse = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token`, {
+      method: "POST",
+      body: shortLivedParams,
+    });
 
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
-      throw new Error(`Facebook Token Error: ${tokenData.error.message}`);
+      throw new Error(`Facebook Short-Lived Token Error: ${tokenData.error.message}`);
     }
 
     const shortLivedToken = tokenData.access_token;
 
-    // 2. Exchange for Long-Lived Token (60 Days)
+    // 2. Exchange for Long-Lived Token (60 Days) using POST
     const longLivedParams = new URLSearchParams({
       grant_type: "fb_exchange_token",
       client_id: process.env.FACEBOOK_APP_ID!,
@@ -37,11 +44,15 @@ export async function GET(request: Request) {
       fb_exchange_token: shortLivedToken,
     });
 
-    const longLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${longLivedParams.toString()}`);
+    const longLivedRes = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token`, {
+      method: "POST",
+      body: longLivedParams,
+    });
+
     const longLivedData = await longLivedRes.json();
     
     if (!longLivedRes.ok) {
-      throw new Error(`Failed to upgrade token: ${longLivedData.error?.message}`);
+      throw new Error(`Failed to upgrade to long-lived token: ${longLivedData.error?.message}`);
     }
 
     const longLivedToken = longLivedData.access_token;
@@ -53,8 +64,8 @@ export async function GET(request: Request) {
     const fbProfile = await fbProfileRes.json();
 
     // 4. Save to social_accounts
-    // Your SQL function will now work perfectly because auth.uid() 
-    // still points to your ORIGINAL user.
+    // Because we didn't use supabase.auth, the current session is preserved.
+    // Your SQL function will correctly use the original user's ID.
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
