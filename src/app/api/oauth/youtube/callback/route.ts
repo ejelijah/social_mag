@@ -20,6 +20,12 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User session not found");
 
+    const { data: usernameData, error: usernameError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+
     // Exchange code for tokens
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -50,6 +56,7 @@ export async function GET(request: Request) {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token, 
         is_connected: true,
+        username: user.user_metadata?.youtube_username || usernameData, // Placeholder if username is not available
         updated_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       }, { onConflict: 'user_id, platform' }); 
 

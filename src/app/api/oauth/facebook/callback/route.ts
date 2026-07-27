@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { metadata } from "@/app/layout";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -60,7 +61,10 @@ export async function GET(request: Request) {
         access_token: accessToken,
         is_connected: true,
         display_name: fbProfile.name,
-        username: fbProfile.id,
+        username: fbProfile.name,
+        metadata: JSON.stringify(fbProfile),
+        page_id: fbProfile.id,
+        expiers_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
         provider: "facebook",
         updated_at: new Date().toISOString(),
       }, {

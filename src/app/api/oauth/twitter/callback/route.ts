@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/utils/supabase/server'; 
+import { metadata } from '@/app/layout';
 
 export async function GET(request: Request) {
   console.log('--- OAuth Callback Started ---');
@@ -40,7 +41,6 @@ export async function GET(request: Request) {
       throw new Error("User not authenticated");
     }
     console.log('Debug: Authenticated user ID:', user.id);
-
     // 3. Exchange Code for Token
     console.log('Debug: Attempting token exchange with X...');
     
@@ -77,7 +77,10 @@ export async function GET(request: Request) {
     .upsert({
       platform: 'twitter',
       is_connected: true, // Changed to snake_case to match standard DB practice
-
+      metadata: JSON.stringify(tokens),
+      username: user.user_metadata?.twitter_username || 'Twitter User', // Placeholder if username is not available
+      provider: 'twitter',
+      page_id: user.user_metadata?.twitter_user_id || null, // Assuming you store the Twitter user ID in metadata
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       updated_at: new Date().toISOString(),

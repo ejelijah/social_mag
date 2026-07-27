@@ -20,6 +20,10 @@ export async function GET(request: Request) {
     if (authError || !user) {
       throw new Error("User session not found. Please log in again.");
     }
+    const {data:username,error}= await supabase.from("users ").select("id").eq("id",user.id).single()
+    if(error || !user){
+      throw new Error("User not found in database. Please log in again.");
+    }
 
     // 2. Exchange Code for Short-Lived Access Token
     const shortLivedParams = new URLSearchParams({
@@ -61,6 +65,10 @@ export async function GET(request: Request) {
         provider: "instagram",
         access_token: longLivedToken,
         is_connected: true,
+        expires_at: new Date(Date.now() + longLivedData.expires_in * 1000).toISOString(),
+        metadata: JSON.stringify(longLivedData),
+        page_id: longLivedData.user_id,
+        username: username|| "Instagram User",
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id,platform'

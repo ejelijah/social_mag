@@ -185,7 +185,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Impressions timeline */}
-        <div className="bg-white border rounded-xl p-6 shadow-sm">
+        <div className="bg-gray-800 border rounded-xl p-6 shadow-sm">
           <h2 className="font-semibold mb-5 text-black">Growth Timeline (Last 14 days)</h2>
           {loading ? (
             <Skeleton className="h-56 rounded-xl" />

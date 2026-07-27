@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
+import { metadata } from '@/app/layout';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -81,6 +82,7 @@ const { error: upsertError } = await supabase
     is_connected: true,
     updated_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
+    metadata: JSON.stringify(userData),
     // Access the property from the already parsed object
     username: responseData.data?.me?.display_name || 'Snapchat User', 
   }, { 

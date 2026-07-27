@@ -207,12 +207,12 @@ export default function CalendarPage() {
               {!selectedDay ? (
                 <div className="text-center py-12">
                   <CalendarIcon className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400">Click a day to see omniposts</p>
+                  <p className="text-sm text-gray-800">Click a day to see omniposts</p>
                 </div>
               ) : selectedDayScheduled.length === 0 ? (
                 <div className="text-center py-12">
                   <Clock className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-400 mb-4">No posts scheduled</p>
+                  <p className="text-sm text-gray-800 mb-4">No posts scheduled</p>
                   <Link href="/chat"><Button size="sm" variant="outline" className="text-xs">Schedule a post</Button></Link>
                 </div>
               ) : (

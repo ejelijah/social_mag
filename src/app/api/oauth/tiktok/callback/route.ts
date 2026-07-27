@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { metadata } from "@/app/layout";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
         is_connected: true,
         updated_at: new Date().toISOString(),
         // TikTok tokens usually expire in 24 hours (86400 seconds)
+        metadata: JSON.stringify(tokens),
         expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
         username: user.user_metadata?.tiktok_username || "TikTok User", // Placeholder if username is not available
       }, {
