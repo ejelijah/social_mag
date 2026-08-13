@@ -23,8 +23,9 @@ import {
   FileText,
   Facebook,
   Plus,
+  Upload,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 
@@ -43,6 +44,8 @@ type Platform = keyof typeof PLATFORMS;
 
 export default function CreateContent() {
   const supabase = createClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadType, setUploadType] = useState<'image' | 'video' | null>(null);
 
   const [userName, setUserName] = useState("User");
   const [topic, setTopic] = useState("");
@@ -64,7 +67,6 @@ export default function CreateContent() {
   const [trending, setTrending] = useState<any[]>([]);
   const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([]);
   
-  // NEW: State for success screen
   const [isPublishedSuccessfully, setIsPublishedSuccessfully] = useState(false);
 
   const [isLoading, setIsLoading] = useState({
@@ -72,7 +74,8 @@ export default function CreateContent() {
     generating: false,
     media: false,
     saving: false,
-    publishing: false
+    publishing: false,
+    uploading: false
   });
 
   useEffect(() => {
@@ -117,12 +120,68 @@ export default function CreateContent() {
     );
   };
 
+  // NEW: Handle Manual File Upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadType) return;
+
+    setIsLoading(prev => ({ ...prev, uploading: true }));
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `uploads/${fileName}`;
+
+      const { error: uploadError, data } = await supabase.storage
+        .from('content') // Ensure you have a bucket named 'content'
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('content')
+        .getPublicUrl(filePath);
+
+      setGeneratedPost(prev => ({
+        id: Date.now(),
+        platform: selectedPlatform,
+        content: editedContent || topic,
+        hashtags: [],
+        imageUrl: publicUrl,
+        mediaPath: filePath,
+        mediaType: uploadType,
+        ...prev
+      }));
+      
+      if (!editedContent) setEditedContent(topic);
+      toast.success(`${uploadType === 'image' ? 'Image' : 'Video'} uploaded successfully!`);
+    } catch (error: any) {
+      toast.error("Upload failed: " + error.message);
+    } finally {
+      setIsLoading(prev => ({ ...prev, uploading: false }));
+      setUploadType(null);
+    }
+  };
+
+  // NEW: Handle Manual Text Post (No AI)
+  const handleManualPost = () => {
+    if (!topic.trim()) return toast.error("Write something first");
+    setEditedContent(topic);
+    setGeneratedPost({
+      id: Date.now(),
+      platform: selectedPlatform,
+      content: topic,
+      hashtags: [],
+      mediaType: undefined
+    });
+    setGenerateTypes(["text"]);
+  };
+
   async function handleOmniGenerate() {
     if (!topic.trim()) return toast.error("Enter a topic first");
     if (generateTypes.length === 0) return toast.error("Select what to generate (Text/Image/Video)");
 
     setIsLoading(prev => ({ ...prev, generating: true }));
-    setIsPublishedSuccessfully(false); // Reset success state on new generation
+    setIsPublishedSuccessfully(false);
     let currentPost: any = { id: Date.now(), platform: selectedPlatform, content: "", hashtags: [] };
 
     try {
@@ -163,7 +222,7 @@ export default function CreateContent() {
 
   async function handlePublishNow() {
     if (!generatedPost || selectedPublishPlatforms.length === 0) {
-      return toast.error("Select platforms and generate content first.");
+      return toast.error("Select platforms and prepare content first.");
     }
 
     setIsLoading(prev => ({ ...prev, publishing: true }));
@@ -193,13 +252,11 @@ export default function CreateContent() {
           body: requestBody
         });
 
-        // If there is an error, we prefix it with the platform name so we can identify it later
         if (error) throw new Error(`${platform}: ${error.message}`);
         return { platform, data };
       });
 
       const results = await Promise.allSettled(publishPromises);
-      
       const failures = results.filter(r => r.status === 'rejected');
       const successes = results.filter(r => r.status === 'fulfilled');
 
@@ -209,7 +266,6 @@ export default function CreateContent() {
           const [platformName, ...errorParts] = fullError.split(':');
           const errorMessage = errorParts.join(':').trim();
 
-          // Check if this is an authentication/token error
           const isAuthError = 
             errorMessage.toLowerCase().includes("expired") || 
             errorMessage.toLowerCase().includes("reconnect") || 
@@ -222,11 +278,10 @@ export default function CreateContent() {
               action: {
                 label: "Reconnect",
                 onClick: () => {
-                  // This redirects the user to your specific OAuth login route
                   window.location.href = `/api/oauth/${platformName.toLowerCase().trim()}/login`;
                 },
               },
-              duration: 10000, // Keep toast visible longer so they can click
+              duration: 10000,
             });
           } else {
             toast.error(`Failed to post to ${platformName}: ${errorMessage}`);
@@ -251,11 +306,11 @@ export default function CreateContent() {
     }
   }
 
-
   const resetForm = () => {
     setIsPublishedSuccessfully(false);
     setGeneratedPost(null);
     setTopic("");
+    setEditedContent("");
   };
 
   return (
@@ -286,34 +341,75 @@ export default function CreateContent() {
             </div>
 
             <div className="card-premium p-5 space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Prompt</h3>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Content</h3>
               <Textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="What do you want to create?"
+                placeholder="What do you want to share? Type here..."
                 className="min-h-[120px] border-border/50 resize-none text-sm text-white"
               />
               
-              <div className="flex gap-2 py-2">
-                <button onClick={() => toggleType("text")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
-                  <FileText className="w-3 h-3" /> TEXT
-                </button>
-                <button onClick={() => toggleType("image")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("image") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
-                  <ImageIcon className="w-3 h-3" /> IMAGE
-                </button>
-                <button onClick={() => toggleType("video")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("video") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
-                  <Video className="w-3 h-3" /> VIDEO
-                </button>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <button onClick={() => toggleType("text")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
+                    <FileText className="w-3 h-3" /> AI TEXT
+                  </button>
+                  <button onClick={() => toggleType("image")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("image") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
+                    <ImageIcon className="w-3 h-3" /> AI IMAGE
+                  </button>
+                  <button onClick={() => toggleType("video")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("video") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
+                    <Video className="w-3 h-3" /> AI VIDEO
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    hidden 
+                    accept={uploadType === 'image' ? "image/*" : "video/*"} 
+                    onChange={handleFileUpload} 
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-[10px] h-9 border-dashed"
+                    onClick={() => { setUploadType('image'); fileInputRef.current?.click(); }}
+                    disabled={isLoading.uploading}
+                  >
+                    {isLoading.uploading && uploadType === 'image' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Upload className="w-3 h-3 mr-1" />}
+                    UPLOAD IMAGE
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-[10px] h-9 border-dashed"
+                    onClick={() => { setUploadType('video'); fileInputRef.current?.click(); }}
+                    disabled={isLoading.uploading}
+                  >
+                    {isLoading.uploading && uploadType === 'video' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Upload className="w-3 h-3 mr-1" />}
+                    UPLOAD VIDEO
+                  </Button>
+                </div>
               </div>
 
-              <Button
-                onClick={handleOmniGenerate}
-                disabled={isLoading.generating || !topic.trim()}
-                className="w-full h-11 bg-primary font-bold rounded-xl text-black"
-              >
-                {isLoading.generating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
-                Generate Content
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleOmniGenerate}
+                  disabled={isLoading.generating || !topic.trim()}
+                  className="flex-1 h-11 bg-primary font-bold rounded-xl text-black"
+                >
+                  {isLoading.generating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
+                  AI Generate
+                </Button>
+                <Button
+                  onClick={handleManualPost}
+                  variant="secondary"
+                  className="px-4 h-11 font-bold rounded-xl"
+                >
+                  Create Manual
+                </Button>
+              </div>
             </div>
 
             <div className="card-premium p-5 space-y-4">
@@ -341,7 +437,6 @@ export default function CreateContent() {
           </div>
 
           <div className="xl:col-span-8 space-y-6">
-            {/* SUCCESS SIGN SECTION */}
             {isPublishedSuccessfully ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 animate-in zoom-in-95 duration-500">
                 <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
@@ -362,7 +457,7 @@ export default function CreateContent() {
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 border-dashed border-2 border-border/50">
                 <Wand2 className="w-12 h-12 text-primary mb-4 opacity-20" />
                 <h2 className="text-xl font-bold mb-2">Ready to create, {userName}?</h2>
-                <p className="text-muted-foreground text-sm">Input a prompt and select your content types to begin.</p>
+                <p className="text-muted-foreground text-sm">Upload media or use AI to generate content for your post.</p>
               </div>
             ) : isLoading.generating ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center p-12">
@@ -372,37 +467,35 @@ export default function CreateContent() {
               </div>
             ) : (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                {generateTypes.includes("text") && (
-                  <div className="card-premium p-6 bg-surface-raised/20">
-                    <div className="flex items-center justify-between mb-4">
-                      <Badge className="bg-primary/10 text-primary px-3 py-1">AI Copy</Badge>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => { navigator.clipboard.writeText(editedContent); toast.success("Copied!"); }} className="p-2 hover:bg-surface-raised rounded-lg"><Copy className="w-4 h-4" /></button>
-                        <button onClick={() => setGeneratedPost(null)} className="p-2 hover:bg-destructive/10 text-destructive rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                      </div>
+                <div className="card-premium p-6 bg-surface-raised/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <Badge className="bg-primary/10 text-primary px-3 py-1">Post Content</Badge>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { navigator.clipboard.writeText(editedContent); toast.success("Copied!"); }} className="p-2 hover:bg-surface-raised rounded-lg"><Copy className="w-4 h-4" /></button>
+                      <button onClick={() => setGeneratedPost(null)} className="p-2 hover:bg-destructive/10 text-destructive rounded-lg"><Trash2 className="w-4 h-4" /></button>
                     </div>
-                    <Textarea
-                      value={editedContent}
-                      onChange={(e) => setEditedContent(e.target.value)}
-                      className="min-h-[150px] text-lg bg-transparent border-none focus-visible:ring-0 resize-none p-0"
-                    />
                   </div>
-                )}
+                  <Textarea
+                    value={editedContent}
+                    onChange={(e) => setEditedContent(e.target.value)}
+                    className="min-h-[150px] text-lg bg-transparent border-none focus-visible:ring-0 resize-none p-0"
+                  />
+                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="card-premium p-6 space-y-4 bg-surface-raised/20">
-                    <h3 className="text-sm font-bold uppercase tracking-wider">Visual Preview</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Media Preview</h3>
                     <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-border/50 flex items-center justify-center">
                       {generatedPost?.imageUrl ? (
                         generatedPost.mediaType === 'video' ? (
                           <video src={generatedPost.imageUrl} controls autoPlay loop className="w-full h-full object-cover" />
                         ) : (
-                          <img src={generatedPost.imageUrl} className="w-full h-full object-cover" alt="AI Generated" />
+                          <img src={generatedPost.imageUrl} className="w-full h-full object-cover" alt="Preview" />
                         )
                       ) : (
                         <div className="text-center opacity-20">
                           <ImageIcon className="w-12 h-12 mx-auto mb-2" />
-                          <p className="text-xs">No media generated</p>
+                          <p className="text-xs">No media attached</p>
                         </div>
                       )}
                     </div>
