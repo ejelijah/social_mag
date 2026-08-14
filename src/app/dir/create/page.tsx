@@ -198,38 +198,47 @@ export default function CreateContent() {
   // 5. Final Publishing and Cleanup
   async function handlePublishNow() {
     if (!generatedPost || selectedPublishPlatforms.length === 0) return toast.error("Select platforms first.");
-    setIsLoading(prev => ({ ...prev, publishing: true }));
     
+    setIsLoading(prev => ({ ...prev, publishing: true }));
+    const cleanupPath = generatedPost.mediaPath;
+  
     try {
-      const publishPromises = selectedPublishPlatforms.map(async (platform) => {
+      for (const platform of selectedPublishPlatforms) {
         const platformKey = platform.toLowerCase();
         
         const requestBody = { 
           message: editedContent, 
-          link: generatedPost.imageUrl, // The public URL for FB/IG to download
-          mediaPath: generatedPost.mediaPath // The internal path (e.g., "temp/123.png") for deletion
+          link: generatedPost.imageUrl, 
+          mediaPath: generatedPost.mediaPath 
         };
         
+        // We use 'invoke' but must handle the response body for errors
         const { data, error } = await supabase.functions.invoke(`post-${platformKey}`, { 
           body: requestBody 
         });
-        
-        if (error) throw new Error(`${platform}: ${error.message}`);
-        return data;
-      });
   
-      await Promise.all(publishPromises);
-      
-      toast.success("Successfully published and storage cleaned!");
+        // If Supabase returns an error, it's usually in the 'error' object
+        if (error) {
+          const errorDetails = await error.context.json();
+          throw new Error(`${platform}: ${errorDetails.error || error.message}`);
+        }
+        
+        console.log(`${platform} success:`, data);
+      }
+  
+      toast.success("Successfully published to all selected platforms!");
       setIsPublishedSuccessfully(true);
-      setGeneratedPost(null);
       resetForm();
+  
     } catch (e: any) {
-      toast.error(e.message);
+      console.error("Publish Error:", e);
+      // This will now show the ACTUAL message from the Edge Function
+      toast.error(e.message || "An unknown error occurred");
     } finally {
       setIsLoading(prev => ({ ...prev, publishing: false }));
     }
   }
+  
   
 
   const resetForm = () => {

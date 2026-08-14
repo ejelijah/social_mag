@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
-import { metadata } from '@/app/layout';
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
 
@@ -12,83 +11,56 @@ export async function GET(request: Request) {
   const storedState = cookieStore.get('snap_auth_state')?.value;
   const codeVerifier = cookieStore.get('snap_code_verifier')?.value;
 
-  // 1. Validation with detailed error reporting
-  let errorReason = "";
-  if (!code) errorReason = "Missing authorization code from Snapchat";
-  else if (!state) errorReason = "Missing state parameter";
-  else if (state !== storedState) errorReason = "Security state mismatch (CSRF protection)";
-  else if (!codeVerifier) errorReason = "Security verifier (PKCE) missing from session";
-
-  if (errorReason) {
-    console.error('Snapchat Auth Validation Failed:', { errorReason, state, storedState });
-    return NextResponse.redirect(new URL(`/dashboard?error=${encodeURIComponent(errorReason)}`, request.url));
+  if (!code || state !== storedState || !codeVerifier) {
+    return NextResponse.redirect(new URL('/dashboard?error=invalid_snap_state', request.url));
   }
 
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
     if (!user) throw new Error("User session not found.");
 
-    // 1. Ensure all variables are strings (prevents argument errors in URLSearchParams)
-    const clientId = process.env.SNAP_CLIENT_ID || "";
-    const clientSecret = process.env.SNAP_CLIENT_SECRET || "";
-    const redirectUri = process.env.SNAP_REDIRECT_URI || "";
+    // Fetch Elijah ej's name from the users table
+    const { data: profile } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', user.id)
+      .single();
 
-    if (!clientId || !redirectUri) {
-      throw new Error("Missing SNAP_CLIENT_ID or SNAP_REDIRECT_URI in environment variables");
-    }
+    const displayUserName = profile?.name || "Elijah ej";
 
-    // 2. Use the CORRECT Snapchat token endpoint
     const response = await fetch('https://accounts.snapchat.com/login/oauth2/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        code: code as string,
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        client_secret: clientSecret,
-        code_verifier: codeVerifier as string, // Required for PKCE
+        code: code,
+        redirect_uri: process.env.SNAP_REDIRECT_URI!,
+        client_id: process.env.SNAP_CLIENT_ID!,
+        client_secret: process.env.SNAP_CLIENT_SECRET!,
+        code_verifier: codeVerifier,
       }),
     });
 
-    // 3. Handle non-JSON responses (prevents parsing errors)
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      const textError = await response.text();
-      throw new Error(`Snapchat returned non-JSON response: ${textError.substring(0, 100)}`);
-    }
+    const tokens = await response.json();
+    if (!response.ok) throw new Error(tokens.error_description || "Snapchat exchange failed");
 
- // 1. Read the JSON once
-const responseData = await response.json();
-
-if (!response.ok) {
-  throw new Error(responseData.error_description || responseData.error || "Snapchat token exchange failed");
-}
-
-// 2. Use the data from that single variable
-const tokens = responseData;
-const userData = responseData; // If the user info is in the same response
-
-// 3. Save to Supabase
-const { error: upsertError } = await supabase
-  .from('social_accounts')
-  .upsert({
-    platform: 'snapchat',
-    provider: 'snapchat',
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token || null,
-    is_connected: true,
-    updated_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-    metadata: JSON.stringify(userData),
-    // Access the property from the already parsed object
-    username: responseData.data?.me?.display_name || 'Snapchat User', 
-  }, { 
-    onConflict: 'user_id,platform' 
-  });
-
+    const { error: upsertError } = await supabase
+      .from('social_accounts')
+      .upsert({
+        user_id: user.id,
+        platform: 'snapchat',
+        provider: 'snapchat',
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token || null,
+        is_connected: true,
+        username: displayUserName, // Updated to use name from DB
+        updated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
+        metadata: JSON.stringify(tokens),
+      }, { 
+        onConflict: 'user_id,platform' 
+      });
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
   
@@ -96,9 +68,7 @@ const { error: upsertError } = await supabase
     cookieStore.delete('snap_code_verifier');
 
     return NextResponse.redirect(new URL('/dir/create', request.url));
-
   } catch (error: any) {
-    console.error('Snapchat OAuth Error:', error.message);
     return NextResponse.redirect(new URL(`/dashboard?error=${encodeURIComponent(error.message)}`, request.url));
   }
 }

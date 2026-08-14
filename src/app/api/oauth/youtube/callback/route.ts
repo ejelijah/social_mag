@@ -20,13 +20,15 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User session not found");
 
-    const { data: usernameData, error: usernameError } = await supabase
+    // Fetch Elijah ej's name from the users table
+    const { data: profile } = await supabase
       .from('users')
-      .select('id')
+      .select('name')
       .eq('id', user.id)
       .single();
 
-    // Exchange code for tokens
+    const displayUserName = profile?.name || "Elijah ej";
+
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -41,38 +43,29 @@ export async function GET(request: Request) {
     });
 
     const tokens = await response.json();
+    if (!response.ok) throw new Error(`Google Token Exchange Failed: ${tokens.error_description || tokens.error}`);
 
-    if (!response.ok) {
-      throw new Error(`Google Token Exchange Failed: ${tokens.error_description || tokens.error || JSON.stringify(tokens)}`);
-    }
-
-    // Save to social_accounts
-    // FIX: Changed onConflict to 'user_id, platform' to match the data you are sending
     const { error: upsertError } = await supabase
       .from('social_accounts')
       .upsert({
+        user_id: user.id,
         platform: 'youtube',
         provider: 'youtube',
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token, 
         is_connected: true,
-        username: user.user_metadata?.youtube_username || usernameData, // Placeholder if username is not available
-        updated_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+        username: displayUserName, // Updated to use name from DB
+        updated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       }, { onConflict: 'user_id, platform' }); 
 
-    if (upsertError) {
-      throw new Error(`Database Upsert Failed: ${upsertError.message}`);
-    }
+    if (upsertError) throw new Error(`Database Upsert Failed: ${upsertError.message}`);
 
     cookieStore.delete('youtube_oauth_state');
     cookieStore.delete('youtube_code_verifier');
 
     return NextResponse.redirect(new URL('/dir/create', request.url));
   } catch (error: any) {
-    console.error('YouTube OAuth Error:', error);
-    
-    // This encodes the actual error message into the URL so you can read it in the browser
-    const errorMessage = encodeURIComponent(error.message || 'Unknown Error');
-    return NextResponse.redirect(new URL(`/dashboard?error=${errorMessage}`, request.url));
+    return NextResponse.redirect(new URL(`/dashboard?error=${encodeURIComponent(error.message)}`, request.url));
   }
 }

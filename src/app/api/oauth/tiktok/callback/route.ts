@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { metadata } from "@/app/layout";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
-  if (!code) {
-    return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent("No authorization code provided by TikTok")}`);
-  }
-
-  const supabase = await createClient();
+  if (!code) return NextResponse.redirect(`${origin}/dashboard/accounts?error=no_code`);
 
   try {
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User session not found.");
 
-    if (!user) {
-      return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent("User session not found. Please log in again.")}`);
-    }
+    // Fetch Elijah ej's name from the users table
+    const { data: profile } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', user.id)
+      .single();
 
-    // Exchange code for Access Token
+    const displayUserName = profile?.name || "Elijah ej";
+
     const tokenResponse = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_key: process.env.TIKTOK_CLIENT_KEY!.trim(),
         client_secret: process.env.TIKTOK_CLIENT_SECRET!.trim(),
@@ -35,44 +34,29 @@ export async function GET(request: Request) {
     });
 
     const tokens = await tokenResponse.json();
-    console.log("TikTok API Response:", tokens);
-    if (!tokenResponse.ok) {
-      // Extract specific TikTok error message if available
-      const errorMessage = tokens.error_description || tokens.message || "Failed to exchange TikTok code";
-      throw new Error(errorMessage);
-    }
-    if (!tokens.access_token) {
-      throw new Error("TikTok returned a success response but no access_token was found. Response: " + JSON.stringify(tokens));
-  }
+    if (!tokenResponse.ok) throw new Error(tokens.error_description || "TikTok exchange failed");
 
-
-    // Save TikTok tokens to social_accounts table
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
-        
+        user_id: user.id,
         platform: "tiktok",
         provider: "tiktok",
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token || null,
         is_connected: true,
-        updated_at: new Date().toISOString(),
-        // TikTok tokens usually expire in 24 hours (86400 seconds)
+        username: displayUserName, // Updated to use name from DB
         metadata: JSON.stringify(tokens),
+        updated_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + (tokens.expires_in || 86400) * 1000).toISOString(),
-        username: user.user_metadata?.tiktok_username || "TikTok User", // Placeholder if username is not available
       }, {
         onConflict: 'user_id,platform'
       });
 
-    if (upsertError) {
-        throw new Error(`Database Error: ${upsertError.message}`);
-    }
+    if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
 
     return NextResponse.redirect(`${origin}/dir/create`);
   } catch (error: any) {
-    console.error("TikTok Auth Error:", error.message);
-    // Redirect back to the dashboard with the specific error message in the URL
     return NextResponse.redirect(`${origin}/dashboard/accounts?error=${encodeURIComponent(error.message)}`);
   }
 }

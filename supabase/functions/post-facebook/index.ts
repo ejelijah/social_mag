@@ -15,59 +15,48 @@ Deno.serve(async (req) => {
     )
 
     const authHeader = req.headers.get('Authorization')!
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
-    if (authError || !user) throw new Error("Unauthorized")
-
+    const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
     const { message, link, mediaPath } = await req.json()
 
-    // 1. Fetch Credentials
-    const { data: social, error: dbError } = await supabaseClient
+    const { data: social } = await supabaseClient
       .from('social_accounts')
       .select('access_token, page_id')
       .eq('user_id', user.id)
       .eq('platform', 'facebook')
       .single()
 
-    if (dbError || !social) throw new Error("Facebook not connected.", { cause: dbError })
+    if (!social) throw new Error("Facebook account not linked in database.");
 
-    // 2. Determine Endpoint (Photos vs Feed)
-    let fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/feed`;
-    let body: any = { access_token: social.access_token };
+    // Logic: If there is a link (image), use /photos, otherwise use /feed
+    const isImage = link && (link.includes('.jpg') || link.includes('.png') || link.includes('post-media'));
+    const fbUrl = isImage 
+      ? `https://graph.facebook.com/v20.0/${social.page_id}/photos` 
+      : `https://graph.facebook.com/v20.0/${social.page_id}/feed`;
 
-    if (link && link.includes('post-media')) {
-      // If there's an image, use the photos endpoint
-      fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/photos`;
-      body.url = link;
-      body.caption = message;
-    } else {
-      body.message = message;
-    }
+    const fbPayload: any = {
+      access_token: social.access_token,
+      [isImage ? 'caption' : 'message']: message
+    };
+    if (link) fbPayload[isImage ? 'url' : 'link'] = link;
 
-    const fbResponse = await fetch(fbUrl, {
+    const fbRes = await fetch(fbUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
+      body: JSON.stringify(fbPayload),
+    });
 
-    const result = await fbResponse.json()
-    if (!fbResponse.ok) throw new Error(result.error?.message || "FB Post Failed");
+    const fbData = await fbRes.json();
+    if (!fbRes.ok) throw new Error(fbData.error?.message || "Facebook rejected the post");
 
-    // 3. Cleanup: Delete from Storage
-    if (mediaPath) {
-      await supabaseClient.storage.from('post-media').remove([mediaPath]);
-    }
+    // Cleanup storage
+    if (mediaPath) await supabaseClient.storage.from('post-media').remove([mediaPath]);
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+    return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
   }
 })
+
 
 
