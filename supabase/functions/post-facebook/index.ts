@@ -16,35 +16,31 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')!
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
-
     if (authError || !user) throw new Error("Unauthorized")
 
-    // The frontend sends "message" and "link"
-    const { message, link } = await req.json()
+    const { message, link, mediaPath } = await req.json()
 
-    // 1. Fetch credentials
-    // IMPORTANT: Ensure your DB uses 'facebook' in the provider column
+    // 1. Fetch Credentials
     const { data: social, error: dbError } = await supabaseClient
       .from('social_accounts')
       .select('access_token, page_id')
       .eq('user_id', user.id)
-      .eq('platform', 'facebook') // Changed 'provider' to 'platform' to match your DB
+      .eq('platform', 'facebook')
       .single()
 
-    if (dbError || !social) throw new Error("Facebook account not connected in database.")
-    if (!social.page_id || social.page_id.length < 5) throw new Error("Invalid Page ID. Please reconnect your Facebook Page.");
+    if (dbError || !social) throw new Error("Facebook not connected.")
 
-    // 2. Post to Facebook Page Feed
-    const fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/feed`
-    
-    const body: any = {
-      message: message || "",
-      access_token: social.access_token,
-    }
-    
-    // Only add link if it's a valid URL
-    if (link && link.startsWith('http')) {
-      body.link = link;
+    // 2. Determine Endpoint (Photos vs Feed)
+    let fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/feed`;
+    let body: any = { access_token: social.access_token };
+
+    if (link && link.includes('post-media')) {
+      // If there's an image, use the photos endpoint
+      fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/photos`;
+      body.url = link;
+      body.caption = message;
+    } else {
+      body.message = message;
     }
 
     const fbResponse = await fetch(fbUrl, {
@@ -54,12 +50,14 @@ Deno.serve(async (req) => {
     })
 
     const result = await fbResponse.json()
+    if (!fbResponse.ok) throw new Error(result.error?.message || "FB Post Failed");
 
-    if (!fbResponse.ok) {
-      throw new Error(result.error?.message || "Facebook API rejected the post.");
+    // 3. Cleanup: Delete from Storage
+    if (mediaPath) {
+      await supabaseClient.storage.from('post-media').remove([mediaPath]);
     }
 
-    return new Response(JSON.stringify({ ok: true, result }), {
+    return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
@@ -71,4 +69,5 @@ Deno.serve(async (req) => {
     })
   }
 })
+
 

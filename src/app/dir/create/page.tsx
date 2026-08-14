@@ -198,33 +198,31 @@ export default function CreateContent() {
   // 5. Final Publishing and Cleanup
   async function handlePublishNow() {
     if (!generatedPost || selectedPublishPlatforms.length === 0) return toast.error("Select platforms first.");
-    
     setIsLoading(prev => ({ ...prev, publishing: true }));
-    const cleanupPath = generatedPost.mediaPath;
-
+    
     try {
       const publishPromises = selectedPublishPlatforms.map(async (platform) => {
         const platformKey = platform.toLowerCase();
-        const functionName = `post-${platformKey}`;
         
         const requestBody = { 
           message: editedContent, 
-          link: generatedPost.imageUrl 
+          link: generatedPost.imageUrl, // The public URL for FB/IG to download
+          mediaPath: generatedPost.mediaPath // The internal path (e.g., "temp/123.png") for deletion
         };
         
-        const { error } = await supabase.functions.invoke(functionName, { body: requestBody });
+        const { data, error } = await supabase.functions.invoke(`post-${platformKey}`, { 
+          body: requestBody 
+        });
+        
         if (error) throw new Error(`${platform}: ${error.message}`);
+        return data;
       });
-
+  
       await Promise.all(publishPromises);
-      toast.success("Published successfully!");
       
-      // Cleanup media from bucket
-      if (cleanupPath) {
-        await supabase.storage.from('post-media').remove([cleanupPath]);
-      }
-
+      toast.success("Successfully published and storage cleaned!");
       setIsPublishedSuccessfully(true);
+      setGeneratedPost(null);
       resetForm();
     } catch (e: any) {
       toast.error(e.message);
@@ -232,6 +230,7 @@ export default function CreateContent() {
       setIsLoading(prev => ({ ...prev, publishing: false }));
     }
   }
+  
 
   const resetForm = () => {
     setGeneratedPost(null);
@@ -298,9 +297,9 @@ export default function CreateContent() {
                       value={manualText} 
                       onChange={(e) => setManualText(e.target.value)}
                       placeholder="Type your post content here..."
-                      className="min-h-[120px] bg-surface-raised/30 border-border/50"
+                      className="min-h-[120px] bg-surface-raised/30 border-border/50 focus:border-primary/50 bg-black/5"
                     />
-                    <div className="p-4 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center gap-3 bg-black/5">
+                    <div className="p-4 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center gap-3 ">
                       <input type="file" ref={fileInputRef} hidden accept="image/*,video/*" onChange={handleFileUpload} />
                       {manualMedia ? (
                         <div className="text-center">
