@@ -311,7 +311,7 @@ export default function CreateContent() {
                       value={manualText} 
                       onChange={(e) => setManualText(e.target.value)}
                       placeholder="Type your manual post content here..."
-                      className="min-h-[120px] bg-surface-raised/30 border-border/50"
+                      className="min-h-[120px] bg-surface-raised/30 border-border/50 bg-black/5 text-white"
                     />
                     <div className="p-4 border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center gap-3">
                       <input type="file" ref={fileInputRef} hidden accept="image/*,video/*" onChange={handleFileUpload} />

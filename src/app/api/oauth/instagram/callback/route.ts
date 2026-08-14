@@ -4,7 +4,6 @@ import { createClient } from "@/utils/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const state = searchParams.get("state");
   const nextPath = "/dir/create";
 
   if (!code) {
@@ -14,18 +13,21 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     
-    // 1. Check for User Session
-    // If this fails, it's why you were sent back to the login page.
+    // 1. Get User Session
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error("User session not found. Please log in again.");
-    }
-    const {data:username,error}= await supabase.from("users ").select("id").eq("id",user.id).single()
-    if(error || !user){
-      throw new Error("User not found in database. Please log in again.");
-    }
+    if (authError || !user) throw new Error("User session not found.");
 
-    // 2. Exchange Code for Short-Lived Access Token
+    // 2. Fetch Elijah's name from your 'users' table
+    // Removed the space in "users" and selected "name"
+    const { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", user.id)
+      .single();
+
+    const displayUserName = profile?.name || "Elijah Ej";
+
+    // 3. Exchange Code for Token
     const shortLivedParams = new URLSearchParams({
       client_id: process.env.INSTAGRAM_APP_ID!,
       client_secret: process.env.INSTAGRAM_APP_SECRET!,
@@ -40,35 +42,26 @@ export async function GET(request: Request) {
     });
 
     const shortLivedData = await shortLivedRes.json();
-    if (!shortLivedRes.ok) {
-      throw new Error(`Instagram Exchange Failed: ${shortLivedData.error_message || "Invalid Secret or Code"}`);
-    }
+    if (!shortLivedRes.ok) throw new Error(shortLivedData.error_message || "Exchange Failed");
 
-    const shortLivedToken = shortLivedData.access_token;
-
-    // 3. Exchange for Long-Lived Token (60 Days)
-    // This is vital so the user doesn't have to reconnect every hour.
+    // 4. Upgrade to Long-Lived Token (60 Days)
     const longLivedRes = await fetch(
-      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortLivedToken}`
+      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortLivedData.access_token}`
     );
-
     const longLivedData = await longLivedRes.json();
-    if (!longLivedRes.ok) throw new Error("Failed to upgrade to long-lived token.");
 
-    const longLivedToken = longLivedData.access_token;
-
-    // 4. Save to social_accounts
+    // 5. Save to social_accounts
     const { error: upsertError } = await supabase
       .from("social_accounts")
       .upsert({
+        user_id: user.id, // Added this back in
         platform: "instagram",
         provider: "instagram",
-        access_token: longLivedToken,
+        access_token: longLivedData.access_token,
         is_connected: true,
-        expires_at: new Date(Date.now() + longLivedData.expires_in * 1000).toISOString(),
-        metadata: JSON.stringify(longLivedData),
-        page_id: longLivedData.user_id,
-        username: username|| "Instagram User",
+        expires_at: new Date(Date.now() + (longLivedData.expires_in || 5184000) * 1000).toISOString(),
+        page_id: shortLivedData.user_id, // This is the Instagram Account ID
+        username: displayUserName, // Now shows Elijah Ej instead of an ID
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id,platform'
@@ -76,12 +69,10 @@ export async function GET(request: Request) {
 
     if (upsertError) throw new Error(`Database Error: ${upsertError.message}`);
 
-    // 5. Final Redirect to the Create Page
     return NextResponse.redirect(`${origin}${nextPath}`);
 
   } catch (err: any) {
-    console.error("INSTAGRAM_CALLBACK_ERROR:", err.message);
-    const errorMessage = encodeURIComponent(err.message);
-    return NextResponse.redirect(`${origin}/dashboard?error=${errorMessage}`);
+    console.error("INSTAGRAM_ERROR:", err.message);
+    return NextResponse.redirect(`${origin}/dashboard?error=${encodeURIComponent(err.message)}`);
   }
 }
