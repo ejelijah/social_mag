@@ -21,7 +21,6 @@ import {
   Wand2,
   Video,
   FileText,
-  Facebook,
   Plus,
   Upload,
 } from "lucide-react";
@@ -45,13 +44,21 @@ type Platform = keyof typeof PLATFORMS;
 export default function CreateContent() {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadType, setUploadType] = useState<'image' | 'video' | null>(null);
 
+  // Core State
   const [userName, setUserName] = useState("User");
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(""); // This is the user's input text (for AI or Manual)
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | "multi">("multi");
   const [generateTypes, setGenerateTypes] = useState<string[]>(["text", "image"]); 
   
+  // State for manual uploads before they are "pushed" to a post
+  const [manualMedia, setManualMedia] = useState<{
+    url: string;
+    path: string;
+    type: 'image' | 'video';
+  } | null>(null);
+
+  // The final post object (ready to be published)
   const [generatedPost, setGeneratedPost] = useState<{
     id: string | number;
     content: string;
@@ -66,14 +73,11 @@ export default function CreateContent() {
   const [selectedPublishPlatforms, setSelectedPublishPlatforms] = useState<string[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([]);
-  
   const [isPublishedSuccessfully, setIsPublishedSuccessfully] = useState(false);
 
   const [isLoading, setIsLoading] = useState({
     trending: true,
     generating: false,
-    media: false,
-    saving: false,
     publishing: false,
     uploading: false
   });
@@ -89,9 +93,7 @@ export default function CreateContent() {
             .eq('id', user.id)
             .maybeSingle();
           
-          if (profile?.name) {
-            setUserName(profile.name.split(' ')[0]);
-          }
+          if (profile?.name) setUserName(profile.name.split(' ')[0]);
         }
 
         const { data: accounts } = await supabase
@@ -101,8 +103,7 @@ export default function CreateContent() {
         
         if (accounts) setConnectedPlatforms(accounts);
 
-        const { data: trendData, error: trendError } = await supabase.functions.invoke('get-trending');
-        if (trendError) throw trendError;
+        const { data: trendData } = await supabase.functions.invoke('get-trending');
         if (trendData?.topics) setTrending(trendData.topics);
 
       } catch (error) {
@@ -120,19 +121,26 @@ export default function CreateContent() {
     );
   };
 
-  // NEW: Handle Manual File Upload
+  // FIX: Unified File Upload for all formats
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !uploadType) return;
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+      return toast.error("Please upload a valid image or video file.");
+    }
 
     setIsLoading(prev => ({ ...prev, uploading: true }));
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `uploads/${fileName}`;
+      const filePath = `manual_uploads/${fileName}`;
 
-      const { error: uploadError, data } = await supabase.storage
-        .from('content') // Ensure you have a bucket named 'content'
+      const { error: uploadError } = await supabase.storage
+        .from('content')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
@@ -141,45 +149,46 @@ export default function CreateContent() {
         .from('content')
         .getPublicUrl(filePath);
 
-      setGeneratedPost(prev => ({
-        id: Date.now(),
-        platform: selectedPlatform,
-        content: editedContent || topic,
-        hashtags: [],
-        imageUrl: publicUrl,
-        mediaPath: filePath,
-        mediaType: uploadType,
-        ...prev
-      }));
+      setManualMedia({
+        url: publicUrl,
+        path: filePath,
+        type: isVideo ? 'video' : 'image'
+      });
       
-      if (!editedContent) setEditedContent(topic);
-      toast.success(`${uploadType === 'image' ? 'Image' : 'Video'} uploaded successfully!`);
+      toast.success(`${isVideo ? 'Video' : 'Image'} uploaded and ready!`);
     } catch (error: any) {
       toast.error("Upload failed: " + error.message);
     } finally {
       setIsLoading(prev => ({ ...prev, uploading: false }));
-      setUploadType(null);
     }
   };
 
-  // NEW: Handle Manual Text Post (No AI)
+  // FIX: Manual Logic - Transfers current text and uploaded media to the preview
   const handleManualPost = () => {
-    if (!topic.trim()) return toast.error("Write something first");
-    setEditedContent(topic);
-    setGeneratedPost({
+    if (!topic.trim() && !manualMedia) {
+      return toast.error("Please enter some text or upload media to create a post.");
+    }
+
+    const manualPost = {
       id: Date.now(),
       platform: selectedPlatform,
       content: topic,
       hashtags: [],
-      mediaType: undefined
-    });
-    setGenerateTypes(["text"]);
+      imageUrl: manualMedia?.url || null,
+      mediaPath: manualMedia?.path || undefined,
+      mediaType: manualMedia?.type || undefined,
+    };
+
+    setGeneratedPost(manualPost);
+    setEditedContent(topic);
+    setIsPublishedSuccessfully(false);
+    toast.success("Manual post prepared!");
   };
 
+  // AI Generation Path
   async function handleOmniGenerate() {
-    if (!topic.trim()) return toast.error("Enter a topic first");
-    if (generateTypes.length === 0) return toast.error("Select what to generate (Text/Image/Video)");
-
+    if (!topic.trim()) return toast.error("Enter a prompt first");
+    
     setIsLoading(prev => ({ ...prev, generating: true }));
     setIsPublishedSuccessfully(false);
     let currentPost: any = { id: Date.now(), platform: selectedPlatform, content: "", hashtags: [] };
@@ -211,7 +220,7 @@ export default function CreateContent() {
       }
 
       setGeneratedPost(currentPost);
-      toast.success("Omnipost content ready!");
+      toast.success("AI Content Generated!");
     } catch (e: any) {
       console.error("Generation Error:", e);
       toast.error("Failed to generate content.");
@@ -248,58 +257,26 @@ export default function CreateContent() {
           requestBody.content = editedContent;
         }
         
-        const { data, error } = await supabase.functions.invoke(functionName, {
+        const { error } = await supabase.functions.invoke(functionName, {
           body: requestBody
         });
 
         if (error) throw new Error(`${platform}: ${error.message}`);
-        return { platform, data };
+        return { platform };
       });
 
       const results = await Promise.allSettled(publishPromises);
-      const failures = results.filter(r => r.status === 'rejected');
       const successes = results.filter(r => r.status === 'fulfilled');
 
-      if (failures.length > 0) {
-        failures.forEach((f: any) => {
-          const fullError = f.reason.message || String(f.reason);
-          const [platformName, ...errorParts] = fullError.split(':');
-          const errorMessage = errorParts.join(':').trim();
-
-          const isAuthError = 
-            errorMessage.toLowerCase().includes("expired") || 
-            errorMessage.toLowerCase().includes("reconnect") || 
-            errorMessage.toLowerCase().includes("not connected") ||
-            errorMessage.toLowerCase().includes("unauthorized");
-
-          if (isAuthError) {
-            toast.error(`${platformName} Connection Expired`, {
-              description: `Your ${platformName} session has ended. Please reconnect to continue posting.`,
-              action: {
-                label: "Reconnect",
-                onClick: () => {
-                  window.location.href = `/api/oauth/${platformName.toLowerCase().trim()}/login`;
-                },
-              },
-              duration: 10000,
-            });
-          } else {
-            toast.error(`Failed to post to ${platformName}: ${errorMessage}`);
-          }
-        });
-      }
-
-      if (successes.length > 0 && failures.length === 0) {
-        toast.success(`Successfully published to ${successes.length} platforms!`);
+      if (successes.length > 0) {
+        toast.success(`Published to ${successes.length} platforms!`);
         setIsPublishedSuccessfully(true);
         setGeneratedPost(null);
+        setManualMedia(null);
         setEditedContent("");
         setTopic("");
-      } else if (successes.length > 0) {
-        toast.success(`Published to ${successes.length} platforms, but some failed.`);
       }
     } catch (e: any) {
-      console.error("Publishing Error:", e);
       toast.error("An unexpected error occurred during publishing.");
     } finally {
       setIsLoading(prev => ({ ...prev, publishing: false }));
@@ -309,6 +286,7 @@ export default function CreateContent() {
   const resetForm = () => {
     setIsPublishedSuccessfully(false);
     setGeneratedPost(null);
+    setManualMedia(null);
     setTopic("");
     setEditedContent("");
   };
@@ -318,6 +296,7 @@ export default function CreateContent() {
       <div className="max-w-[1600px] mx-auto p-4 md:p-6">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
           
+          {/* Left Column: Controls */}
           <div className="xl:col-span-4 space-y-6">
             <div className="card-premium p-5 space-y-4">
               <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Platform</h3>
@@ -341,15 +320,16 @@ export default function CreateContent() {
             </div>
 
             <div className="card-premium p-5 space-y-4">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Content</h3>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Post Content</h3>
               <Textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="What do you want to share? Type here..."
+                placeholder="Write your post or enter an AI prompt..."
                 className="min-h-[120px] border-border/50 resize-none text-sm text-white"
               />
               
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* AI Generation Options */}
                 <div className="flex gap-2">
                   <button onClick={() => toggleType("text")} className={cn("flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-[10px] font-bold transition-all", generateTypes.includes("text") ? "bg-primary text-black border-primary" : "border-border/50 text-muted-foreground")}>
                     <FileText className="w-3 h-3" /> AI TEXT
@@ -362,94 +342,62 @@ export default function CreateContent() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                {/* Manual Upload Logic */}
+                <div className="p-4 border border-dashed border-border/50 rounded-xl bg-surface-raised/30">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase mb-3 text-center">Manual Media Upload</p>
                   <input 
                     type="file" 
                     ref={fileInputRef} 
                     hidden 
-                    accept={uploadType === 'image' ? "image/*" : "video/*"} 
+                    accept="image/*,video/*" 
                     onChange={handleFileUpload} 
                   />
                   <Button 
                     variant="outline" 
-                    size="sm" 
-                    className="text-[10px] h-9 border-dashed"
-                    onClick={() => { setUploadType('image'); fileInputRef.current?.click(); }}
+                    className="w-full h-10 border-primary/30 text-primary hover:bg-primary/5"
+                    onClick={() => fileInputRef.current?.click()}
                     disabled={isLoading.uploading}
                   >
-                    {isLoading.uploading && uploadType === 'image' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Upload className="w-3 h-3 mr-1" />}
-                    UPLOAD IMAGE
+                    {isLoading.uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {manualMedia ? "Change Media" : "Upload Image/Video"}
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-[10px] h-9 border-dashed"
-                    onClick={() => { setUploadType('video'); fileInputRef.current?.click(); }}
-                    disabled={isLoading.uploading}
+                  {manualMedia && (
+                    <p className="text-[10px] text-primary mt-2 text-center font-bold">
+                      ✓ {manualMedia.type.toUpperCase()} READY
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleOmniGenerate}
+                    disabled={isLoading.generating || !topic.trim()}
+                    className="flex-1 h-12 bg-primary font-bold rounded-xl text-black"
                   >
-                    {isLoading.uploading && uploadType === 'video' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Upload className="w-3 h-3 mr-1" />}
-                    UPLOAD VIDEO
+                    {isLoading.generating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
+                    AI Generate
+                  </Button>
+                  <Button
+                    onClick={handleManualPost}
+                    variant="secondary"
+                    className="flex-1 h-12 font-bold rounded-xl border border-border"
+                  >
+                    Use Manual
                   </Button>
                 </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleOmniGenerate}
-                  disabled={isLoading.generating || !topic.trim()}
-                  className="flex-1 h-11 bg-primary font-bold rounded-xl text-black"
-                >
-                  {isLoading.generating ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Sparkles className="w-5 h-5 mr-2" />}
-                  AI Generate
-                </Button>
-                <Button
-                  onClick={handleManualPost}
-                  variant="secondary"
-                  className="px-4 h-11 font-bold rounded-xl"
-                >
-                  Create Manual
-                </Button>
-              </div>
-            </div>
-
-            <div className="card-premium p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Trending</h3>
-              </div>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                {isLoading.trending ? (
-                  Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)
-                ) : (
-                  trending.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setTopic(t.topic)}
-                      className="w-full text-left p-3 rounded-xl border border-transparent bg-surface-raised/50 hover:border-primary/30 transition-all"
-                    >
-                      <p className="text-xs font-bold text-foreground line-clamp-1">{t.topic}</p>
-                      <span className="text-[10px] text-muted-foreground uppercase">{t.category}</span>
-                    </button>
-                  ))
-                )}
               </div>
             </div>
           </div>
 
+          {/* Right Column: Preview & Publish */}
           <div className="xl:col-span-8 space-y-6">
             {isPublishedSuccessfully ? (
-              <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 animate-in zoom-in-95 duration-500">
+              <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12">
                 <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6">
                   <CheckCircle2 className="w-12 h-12 text-primary" />
                 </div>
                 <h2 className="text-3xl font-bold mb-4">Post Published!</h2>
-                <p className="text-muted-foreground text-lg max-w-md mb-8">
-                  Your content has been successfully shared across your selected platforms.
-                </p>
-                <Button 
-                  onClick={resetForm}
-                  className="h-12 px-8 rounded-xl font-bold bg-primary text-black hover:scale-105 transition-transform"
-                >
+                <Button onClick={resetForm} className="h-12 px-8 rounded-xl font-bold bg-primary text-black">
                   <Plus className="w-5 h-5 mr-2" /> Create Another Post
                 </Button>
               </div>
@@ -457,19 +405,18 @@ export default function CreateContent() {
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center text-center p-12 border-dashed border-2 border-border/50">
                 <Wand2 className="w-12 h-12 text-primary mb-4 opacity-20" />
                 <h2 className="text-xl font-bold mb-2">Ready to create, {userName}?</h2>
-                <p className="text-muted-foreground text-sm">Upload media or use AI to generate content for your post.</p>
+                <p className="text-muted-foreground text-sm">Use AI or Manual mode to prepare your post for social media.</p>
               </div>
             ) : isLoading.generating ? (
               <div className="card-premium h-full min-h-[600px] flex flex-col items-center justify-center p-12">
                 <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-                <p className="text-muted-foreground animate-pulse text-lg font-bold">Generating your Omnipost...</p>
-                <p className="text-xs text-muted-foreground mt-2">Checking Edge Functions & Fal.ai status</p>
+                <p className="text-muted-foreground animate-pulse text-lg font-bold">Generating content...</p>
               </div>
             ) : (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="card-premium p-6 bg-surface-raised/20">
                   <div className="flex items-center justify-between mb-4">
-                    <Badge className="bg-primary/10 text-primary px-3 py-1">Post Content</Badge>
+                    <Badge className="bg-primary/10 text-primary px-3 py-1">Final Content</Badge>
                     <div className="flex items-center gap-1">
                       <button onClick={() => { navigator.clipboard.writeText(editedContent); toast.success("Copied!"); }} className="p-2 hover:bg-surface-raised rounded-lg"><Copy className="w-4 h-4" /></button>
                       <button onClick={() => setGeneratedPost(null)} className="p-2 hover:bg-destructive/10 text-destructive rounded-lg"><Trash2 className="w-4 h-4" /></button>
@@ -540,3 +487,4 @@ export default function CreateContent() {
     </AppLayout>
   );
 }
+
