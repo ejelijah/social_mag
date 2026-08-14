@@ -15,27 +15,43 @@ Deno.serve(async (req) => {
     )
 
     const authHeader = req.headers.get('Authorization')!
-    const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader.replace('Bearer ', ''))
+    if (authError || !user) throw new Error("Unauthorized")
     
     const { message, link, mediaPath } = await req.json()
 
     // 1. Fetch Credentials
-    const { data: social } = await supabaseClient
+    const { data: social, error: dbError } = await supabaseClient
       .from('social_accounts')
       .select('access_token, page_id')
       .eq('user_id', user.id)
       .eq('platform', 'instagram')
       .single()
 
-    if (!social) throw new Error("Instagram not connected.");
+    if (dbError || !social) throw new Error("Instagram account not connected in database.")
 
     // Step 1: Create Media Container
-    const containerRes = await fetch(
-      `https://graph.facebook.com/v20.0/${social.page_id}/media?image_url=${encodeURIComponent(link)}&caption=${encodeURIComponent(message)}&access_token=${social.access_token}`,
-      { method: "POST" }
-    )
+    // The ID below MUST be the Instagram Business Account ID
+    const containerUrl = `https://graph.facebook.com/v20.0/${social.page_id}/media`;
+    const containerRes = await fetch(containerUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url: link,
+        caption: message,
+        access_token: social.access_token
+      })
+    })
+
     const containerData = await containerRes.json()
-    if (!containerRes.ok) throw new Error(containerData.error?.message || "Container failed");
+    
+    if (!containerRes.ok) {
+      // This is where "Invalid Credentials" comes from
+      if (containerData.error?.code === 190) {
+        throw new Error("Instagram session expired. Please reconnect your account.");
+      }
+      throw new Error(`Meta Error: ${containerData.error?.message || "Container failed"}`);
+    }
 
     // Step 2: Publish Container
     const publishRes = await fetch(
@@ -56,10 +72,12 @@ Deno.serve(async (req) => {
     })
 
   } catch (error) {
+    console.error("IG_PUBLISH_ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     })
   }
 })
+
 

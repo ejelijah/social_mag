@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       .eq('platform', 'facebook')
       .single()
 
-    if (dbError || !social) throw new Error("Facebook not connected.")
+    if (dbError || !social) throw new Error("Facebook not connected.", { cause: dbError })
 
     // 2. Determine Endpoint (Photos vs Feed)
     let fbUrl = `https://graph.facebook.com/v20.0/${social.page_id}/feed`;
