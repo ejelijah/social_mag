@@ -33,6 +33,8 @@ export async function GET(request: Request) {
       }),
     });
 
+    if (!tokenResponse.ok) throw new Error("Failed to exchange TikTok code");
+
     const tokens = await tokenResponse.json();
     if (!tokenResponse.ok) throw new Error(tokens.error_description || "TikTok exchange failed");
 
