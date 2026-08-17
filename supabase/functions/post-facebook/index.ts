@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     const { data: social, error: dbError } = await supabaseClient
       .from('social_accounts')
       .select('access_token, page_id')
-      .eq('user_id', user.id)
+      // .eq('user_id', user.id)
       .eq('platform', 'facebook')
       .single()
 
