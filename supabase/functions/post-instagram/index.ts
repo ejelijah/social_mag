@@ -35,6 +35,9 @@ Deno.serve(async (req) => {
 
     // 1. CLEAN THE TOKEN
     const token = social.access_token?.trim();
+const encodedToken = encodeURIComponent(token);
+
+console.log(`[${requestId}] Step 1: Creating IG Media Container...`);
     
     // 2. DEBUG LOG (Temporary - remove after fixing)
     // This logs the first 20 and last 20 characters to see if it's being cut off
@@ -51,34 +54,38 @@ Deno.serve(async (req) => {
       access_token: token // Sending in body instead of URL
     };
 
-    const containerRes = await fetch(`https://graph.facebook.com/v20.0/${social.page_id}/media?access_token=${token}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fbPayload),
-    });
-
+    const containerRes = await fetch(
+      `https://graph.facebook.com/v20.0/${social.page_id}/media?access_token=${encodedToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: link,
+          caption: message,
+        }),
+      }
+    );
+    
     const containerData = await containerRes.json();
-
+    
     if (!containerRes.ok) {
-      // If this fails, we log exactly what we sent (minus the token for safety)
-      console.error(`[${requestId}] IG Container Error Details:`, {
-        status: containerRes.status,
-        sentToPageId: social.page_id,
-        payloadSent: { ...fbPayload, access_token: "REDACTED" },
-        response: containerData
-      });
+      console.error(`[${requestId}] IG Container Error Details:`, containerData);
       throw new Error(`IG Container Error: ${containerData.error?.message}`);
     }
-
+    
     // STEP 2: Publish
-    const publishRes = await fetch(`https://graph.facebook.com/v20.0/${social.page_id}/media_publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        creation_id: containerData.id,
-        access_token: token
-      }),
-    });
+    console.log(`[${requestId}] Step 2: Publishing Media...`);
+    
+    const publishRes = await fetch(
+      `https://graph.facebook.com/v20.0/${social.page_id}/media_publish?access_token=${encodedToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: containerData.id,
+        }),
+      }
+    );
 
     const publishData = await publishRes.json();
 
