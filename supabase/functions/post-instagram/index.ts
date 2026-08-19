@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       access_token: token // Sending in body instead of URL
     };
 
-    const containerRes = await fetch(`https://graph.facebook.com/v20.0/${social.page_id}/media`, {
+    const containerRes = await fetch(`https://graph.facebook.com/v20.0/${social.page_id}/media?access_token=${token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fbPayload),
