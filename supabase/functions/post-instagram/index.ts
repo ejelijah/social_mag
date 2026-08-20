@@ -8,8 +8,6 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const requestId = crypto.randomUUID().slice(0, 8);
-  
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -18,11 +16,11 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader?.replace('Bearer ', '') ?? '')
-    
     if (authError || !user) throw new Error("Unauthorized");
 
     const body = await req.json()
-    const { message, link, mediaPath } = body
+    // mediaType should be 'IMAGE' or 'VIDEO'
+    const { message, link, mediaType = 'IMAGE' } = body 
 
     const { data: social, error: dbError } = await supabaseClient
       .from('social_accounts')
@@ -33,69 +31,79 @@ Deno.serve(async (req) => {
 
     if (dbError || !social) throw new Error("Instagram account not connected.");
 
-    // 1. CLEAN THE TOKEN
-    const token = social.access_token?.trim();
-const encodedToken = encodeURIComponent(token);
+    const token = social.access_token;
+    const igId = social.page_id;
 
-console.log(`[${requestId}] Step 1: Creating IG Media Container...`);
-    
-    // 2. DEBUG LOG (Temporary - remove after fixing)
-    // This logs the first 20 and last 20 characters to see if it's being cut off
-    console.log(`[${requestId}] DEBUG: Full Token Stats - Length: ${token?.length}`);
-    console.log(`[${requestId}] DEBUG: Token Start: "${token?.substring(0, 20)}..."`);
-    console.log(`[${requestId}] DEBUG: Token End: "...${token?.substring(token.length - 20)}"`);
-
-    // 3. SWITCH TO POST BODY (More reliable than URL params)
-    console.log(`[${requestId}] Step 1: Creating IG Media Container...`);
-    
-    const fbPayload = {
-      image_url: link,
+    // STEP 1: Create Media Container
+    const containerPayload: any = {
       caption: message,
-      access_token: token // Sending in body instead of URL
+      access_token: token
     };
 
+    if (mediaType === 'VIDEO') {
+      containerPayload.media_type = 'VIDEO';
+      containerPayload.video_url = link;
+    } else {
+      containerPayload.image_url = link;
+    }
+
     const containerRes = await fetch(
-      `https://graph.facebook.com/v20.0/${social.page_id}/media?access_token=${encodedToken}`,
+      `https://graph.facebook.com/v20.0/${igId}/media`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: link,
-          caption: message,
-        }),
+        body: JSON.stringify(containerPayload),
       }
     );
     
     const containerData = await containerRes.json();
-    
-    if (!containerRes.ok) {
-      console.error(`[${requestId}] IG Container Error Details:`, containerData);
-      throw new Error(`IG Container Error: ${containerData.error?.message}`);
+    if (!containerRes.ok) throw new Error(`Container Error: ${containerData.error?.message}`);
+
+    const containerId = containerData.id;
+
+    // STEP 2: Wait for processing if it's a video
+    // Videos must be processed by Instagram before they can be published.
+    if (mediaType === 'VIDEO') {
+      let status = 'IN_PROGRESS';
+      let attempts = 0;
+      const maxAttempts = 30; // Check for up to 150 seconds
+
+      while (status !== 'FINISHED' && attempts < maxAttempts) {
+        // Wait 5 seconds between checks
+        await new Promise(resolve => setTimeout(resolve, 5000)); 
+        
+        const statusRes = await fetch(
+          `https://graph.facebook.com/v20.0/${containerId}?fields=status_code&access_token=${token}`
+        );
+        const statusData = await statusRes.json();
+        status = statusData.status_code;
+        
+        if (status === 'ERROR') {
+          throw new Error(`Video processing failed: ${statusData.error?.message || 'Unknown error'}`);
+        }
+        attempts++;
+      }
+
+      if (status !== 'FINISHED') {
+        throw new Error("Video processing timed out. The file might be too large or the format is unsupported.");
+      }
     }
-    
-    // STEP 2: Publish
-    console.log(`[${requestId}] Step 2: Publishing Media...`);
-    
+
+    // STEP 3: Publish Media
     const publishRes = await fetch(
-      `https://graph.facebook.com/v20.0/${social.page_id}/media_publish?access_token=${encodedToken}`,
+      `https://graph.facebook.com/v20.0/${igId}/media_publish`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          creation_id: containerData.id,
+          creation_id: containerId,
+          access_token: token
         }),
       }
     );
 
     const publishData = await publishRes.json();
-
-    if (!publishRes.ok) {
-      throw new Error(`IG Publish Error: ${publishData.error?.message}`);
-    }
-
-    if (mediaPath) {
-      await supabaseClient.storage.from('post-media').remove([mediaPath]);
-    }
+    if (!publishRes.ok) throw new Error(`Publish Error: ${publishData.error?.message}`);
 
     return new Response(JSON.stringify({ ok: true, id: publishData.id }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
@@ -103,7 +111,6 @@ console.log(`[${requestId}] Step 1: Creating IG Media Container...`);
     });
 
   } catch (error) {
-    console.error(`[${requestId}] 🛑 FINAL ERROR:`, error.message);
     return new Response(JSON.stringify({ error: error.message }), { 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
       status: 400 
