@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     const state = crypto.randomUUID();
 
     const params = new URLSearchParams({
-      client_id: '27358157757197926',
+      client_id: appId,
       redirect_uri: redirectUri,
       response_type: "code",
       scope: scopes,
