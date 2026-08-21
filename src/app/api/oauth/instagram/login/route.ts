@@ -25,8 +25,9 @@ export async function GET(request: Request) {
     "public_profile"
   ].join(",");
 
-  const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code&state=${user.id}`;
+
+  const instagramAuthUrl = `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scopes}&state=${user.id}`;
 
 
-  return NextResponse.redirect(authUrl);
+  return NextResponse.redirect(instagramAuthUrl);
 }
