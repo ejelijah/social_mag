@@ -211,37 +211,31 @@ export async function GET(request: Request) {
     // ------------------------------------------------------------
     // 7. Get Instagram profile
     // ------------------------------------------------------------
-
-    const profileParams =
-      new URLSearchParams({
-        fields:
-          "id,username,name,profile_picture_url",
-        access_token:
-          accessToken,
-      });
-
-    const profileResponse =
-      await fetch(
-        `https://graph.instagram.com/${instagramUserId}?${profileParams.toString()}`,
-        {
-          method: "GET",
-        }
-      );
-
-    const profileData =
-      await profileResponse.json();
-
+    const profileParams = new URLSearchParams({
+      fields: "user_id,username,name,profile_picture_url",
+      access_token: accessToken,
+    });
+    
+    const profileResponse = await fetch(
+      `https://graph.instagram.com/me?${profileParams.toString()}`
+    );
+    
+    const profileData = await profileResponse.json();
+    
     if (!profileResponse.ok) {
       console.error(
         "INSTAGRAM_PROFILE_ERROR:",
         profileData
       );
-
+    
       throw new Error(
         profileData?.error?.message ||
           "Unable to retrieve Instagram profile."
       );
     }
+    
+    const instagramProfileId =
+      profileData.user_id || profileData.id;
 
     // ------------------------------------------------------------
     // 8. Save Instagram connection
@@ -270,7 +264,7 @@ export async function GET(request: Request) {
           // This is now the Instagram
           // professional account ID.
           page_id:
-            instagramUserId,
+            instagramProfileId,
 
           username:
             profileData.username ||
