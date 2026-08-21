@@ -20,8 +20,8 @@ export async function GET(request: Request) {
         `${origin}/dashboard?error=not_authenticated`
       );
     }
-
-    const appId = process.env.INSTAGRAM_APP_ID;
+    
+    const appId = process.env.FACEBOOK_APP_ID;
 
     if (!appId) {
       throw new Error("INSTAGRAM_APP_ID is not configured.");
