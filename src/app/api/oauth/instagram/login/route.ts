@@ -9,11 +9,10 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.redirect(`${origin}/login`);
 
   // Use the ID you provided: 27358157757197926
-  const clientID = "27358157757197926"; 
-  const redirectUri = "https://omnipost.one/api/oauth/instagram/callback";
+  const clientID = "1375168544485480"; 
+  const redirectUri = encodeURIComponent("https://omnipost.one/api/oauth/instagram/callback");
   
-  // These are the "Business" scopes that allow posting. 
-  // These will NOT work with api.instagram.com
+  // These are the specific permissions (scopes) for posting images and videos
   const scopes = [
     "instagram_basic",
     "instagram_content_publish",
@@ -21,9 +20,7 @@ export async function GET(request: Request) {
     "pages_read_engagement",
     "public_profile"
   ].join(",");
-
-  // This URL MUST be facebook.com to get a posting token
-  const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code&state=${user.id}`;
-
-  return NextResponse.redirect(authUrl);
+  
+  // The correct Facebook Login URL
+  const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${clientID}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code`;
 }
