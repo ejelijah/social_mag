@@ -149,6 +149,12 @@ export async function GET(request: Request) {
     const instagramUserId =
       String(tokenData.user_id);
 
+      console.log("INSTAGRAM TOKEN DATA:", {
+        user_id: tokenData.user_id,
+        permissions: tokenData.permissions,
+        expires_in: tokenData.expires_in,
+      });
+
     // ------------------------------------------------------------
     // 6. Exchange short-lived token
     //    for long-lived Instagram token
