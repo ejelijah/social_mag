@@ -65,8 +65,8 @@ export async function GET(request: Request) {
     // 3. Exchange Meta authorization code for access token
     // ------------------------------------------------------------
 
-    const appId = process.env.INSTAGRAM_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET;
+    const appId = process.env.FACEBOOK_APP_ID;
+    const appSecret = process.env.FACEBOOK_APP_SECRET;
 
     if (!appId || !appSecret) {
       throw new Error(
