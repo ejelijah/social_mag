@@ -20,7 +20,7 @@ export async function GET(request: Request) {
         `${origin}/dashboard?error=not_authenticated`
       );
     }
-    
+
     const appId = process.env.FACEBOOK_APP_ID;
 
     if (!appId) {
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     });
 
     const authUrl =
-      `https://api.instagram.com/oauth/authorize?${params.toString()}`;
+      `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
 
 
     const response = NextResponse.redirect(authUrl);
