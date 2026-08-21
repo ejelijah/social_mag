@@ -1,26 +1,86 @@
-import { createClient } from "@/utils/supabase/server";
+// app/api/oauth/instagram/login/route.ts
+
 import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
 export async function GET(request: Request) {
   const { origin } = new URL(request.url);
-  const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(`${origin}/login`);
+  try {
+    const supabase = await createClient();
 
-  // Use the ID you provided: 27358157757197926
-  const clientID = "1375168544485480"; 
-  const redirectUri = encodeURIComponent("https://omnipost.one/api/oauth/instagram/callback");
-  
-  // These are the specific permissions (scopes) for posting images and videos
-  const scopes = [
-    "instagram_basic",
-    "instagram_content_publish",
-    "pages_show_list",
-    "pages_read_engagement",
-    "public_profile"
-  ].join(",");
-  
-  // The correct Facebook Login URL
-  const authUrl = `https://www.facebook.com/v20.0/dialog/oauth?client_id=${clientID}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code`;
+    // Make sure the OmniPost user is logged in.
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      return NextResponse.redirect(
+        `${origin}/dashboard?error=not_authenticated`
+      );
+    }
+
+    const appId = process.env.INSTAGRAM_APP_ID;
+
+    if (!appId) {
+      throw new Error("INSTAGRAM_APP_ID is not configured.");
+    }
+
+    const redirectUri =
+      "https://omnipost.one/api/oauth/instagram/callback";
+
+    /*
+     * Facebook Login for Business / Instagram Business accounts.
+     *
+     * The exact permissions available to your Meta app depend on the
+     * products and permissions enabled in the Meta Developer dashboard.
+     */
+    const scopes = [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_read_engagement",
+    ].join(",");
+
+    const state = crypto.randomUUID();
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: scopes,
+      state,
+    });
+
+    const authUrl =
+      `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
+
+    const response = NextResponse.redirect(authUrl);
+
+    /*
+     * Store the OAuth state so the callback can verify that the request
+     * actually originated from this login attempt.
+     *
+     * This cookie is short-lived and cannot be accessed by client-side JS.
+     */
+    response.cookies.set("instagram_oauth_state", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+
+    return response;
+  } catch (error: any) {
+    console.error("INSTAGRAM_LOGIN_ERROR:", error);
+
+    return NextResponse.redirect(
+      `${origin}/dashboard?error=${encodeURIComponent(
+        error?.message || "Instagram login failed"
+      )}`
+    );
+  }
 }
+

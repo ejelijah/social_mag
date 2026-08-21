@@ -1,119 +1,287 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// supabase/functions/instagram-post/index.ts
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const GRAPH_VERSION = "v20.0";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-
-  try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const authHeader = req.headers.get('Authorization')
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader?.replace('Bearer ', '') ?? '')
-    if (authError || !user) throw new Error("Unauthorized");
-
-    const body = await req.json()
-    // mediaType should be 'IMAGE' or 'VIDEO'
-    const { message, link, mediaType = 'IMAGE' } = body 
-
-    const { data: social, error: dbError } = await supabaseClient
-      .from('social_accounts')
-      .select('access_token, page_id')
-      .eq('user_id', user.id)
-      .eq('platform', 'instagram')
-      .single()
-
-    if (dbError || !social) throw new Error("Instagram account not connected.");
-
-    const token = social.access_token;
-    const igId = social.page_id;
-
-    // STEP 1: Create Media Container
-    const containerPayload: any = {
-      caption: message,
-      access_token: token
-    };
-
-    if (mediaType === 'VIDEO') {
-      containerPayload.media_type = 'VIDEO';
-      containerPayload.video_url = link;
-    } else {
-      containerPayload.image_url = link;
-    }
-
-    const containerRes = await fetch(
-      `https://graph.facebook.com/v20.0/${igId}/media`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(containerPayload),
-      }
-    );
-    
-    const containerData = await containerRes.json();
-    if (!containerRes.ok) throw new Error(`Container Error: ${containerData.error?.message}`);
-
-    const containerId = containerData.id;
-
-    // STEP 2: Wait for processing if it's a video
-    // Videos must be processed by Instagram before they can be published.
-    if (mediaType === 'VIDEO') {
-      let status = 'IN_PROGRESS';
-      let attempts = 0;
-      const maxAttempts = 30; // Check for up to 150 seconds
-
-      while (status !== 'FINISHED' && attempts < maxAttempts) {
-        // Wait 5 seconds between checks
-        await new Promise(resolve => setTimeout(resolve, 5000)); 
-        
-        const statusRes = await fetch(
-          `https://graph.facebook.com/v20.0/${containerId}?fields=status_code&access_token=${token}`
-        );
-        const statusData = await statusRes.json();
-        status = statusData.status_code;
-        
-        if (status === 'ERROR') {
-          throw new Error(`Video processing failed: ${statusData.error?.message || 'Unknown error'}`);
-        }
-        attempts++;
-      }
-
-      if (status !== 'FINISHED') {
-        throw new Error("Video processing timed out. The file might be too large or the format is unsupported.");
-      }
-    }
-
-    // STEP 3: Publish Media
-    const publishRes = await fetch(
-      `https://graph.facebook.com/v20.0/${igId}/media_publish`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          creation_id: containerId,
-          access_token: token
-        }),
-      }
-    );
-
-    const publishData = await publishRes.json();
-    if (!publishRes.ok) throw new Error(`Publish Error: ${publishData.error?.message}`);
-
-    return new Response(JSON.stringify({ ok: true, id: publishData.id }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
-      status: 200 
-    });
-
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
-      status: 400 
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: corsHeaders,
     });
   }
-})
+
+  try {
+    const body = await req.json();
+
+    const {
+      user_id,
+      image_url,
+      caption = "",
+    } = body;
+
+    if (!user_id) {
+      throw new Error("user_id is required.");
+    }
+
+    if (!image_url) {
+      throw new Error("image_url is required.");
+    }
+
+    // ------------------------------------------------------------
+    // Supabase client
+    // ------------------------------------------------------------
+
+    const supabaseUrl =
+      Deno.env.get("SUPABASE_URL");
+
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error(
+        "Supabase environment variables are missing."
+      );
+    }
+
+    const supabase = createClient(
+      supabaseUrl,
+      serviceRoleKey
+    );
+
+    // ------------------------------------------------------------
+    // Get connected Instagram account
+    // ------------------------------------------------------------
+
+    const { data: account, error: accountError } =
+      await supabase
+        .from("social_accounts")
+        .select(
+          "access_token,page_id,username,is_connected,expires_at"
+        )
+        .eq("user_id", user_id)
+        .eq("platform", "instagram")
+        .eq("is_connected", true)
+        .single();
+
+    if (accountError || !account) {
+      throw new Error(
+        "No connected Instagram account was found."
+      );
+    }
+
+    const accessToken = account.access_token;
+    const instagramBusinessId = account.page_id;
+
+    if (!accessToken) {
+      throw new Error(
+        "Instagram access token is missing."
+      );
+    }
+
+    if (!instagramBusinessId) {
+      throw new Error(
+        "Instagram Business Account ID is missing."
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 1. Create Instagram media container
+    // ------------------------------------------------------------
+
+    const createParams = new URLSearchParams();
+
+    createParams.set(
+      "image_url",
+      image_url
+    );
+
+    createParams.set(
+      "caption",
+      caption
+    );
+
+    createParams.set(
+      "access_token",
+      accessToken
+    );
+
+    const createResponse = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${instagramBusinessId}/media`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded",
+        },
+        body: createParams.toString(),
+      }
+    );
+
+    const createData =
+      await createResponse.json();
+
+    if (!createResponse.ok || !createData.id) {
+      console.error(
+        "INSTAGRAM_MEDIA_CREATE_ERROR:",
+        createData
+      );
+
+      throw new Error(
+        createData?.error?.message ||
+          "Instagram media container creation failed."
+      );
+    }
+
+    const creationId = createData.id;
+
+    // ------------------------------------------------------------
+    // 2. Wait briefly for Instagram to process media
+    // ------------------------------------------------------------
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 3000)
+    );
+
+    // ------------------------------------------------------------
+    // 3. Check container status
+    // ------------------------------------------------------------
+
+    const statusUrl = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${creationId}`
+    );
+
+    statusUrl.searchParams.set(
+      "fields",
+      "status_code,status"
+    );
+
+    statusUrl.searchParams.set(
+      "access_token",
+      accessToken
+    );
+
+    const statusResponse = await fetch(
+      statusUrl.toString()
+    );
+
+    const statusData =
+      await statusResponse.json();
+
+    if (!statusResponse.ok) {
+      console.error(
+        "INSTAGRAM_STATUS_ERROR:",
+        statusData
+      );
+
+      throw new Error(
+        statusData?.error?.message ||
+          "Unable to check Instagram media status."
+      );
+    }
+
+    if (
+      statusData.status_code &&
+      statusData.status_code !== "FINISHED"
+    ) {
+      throw new Error(
+        `Instagram media is not ready yet. Status: ${statusData.status_code}`
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 4. Publish the media container
+    // ------------------------------------------------------------
+
+    const publishParams =
+      new URLSearchParams();
+
+    publishParams.set(
+      "creation_id",
+      creationId
+    );
+
+    publishParams.set(
+      "access_token",
+      accessToken
+    );
+
+    const publishResponse = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${instagramBusinessId}/media_publish`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded",
+        },
+        body: publishParams.toString(),
+      }
+    );
+
+    const publishData =
+      await publishResponse.json();
+
+    if (
+      !publishResponse.ok ||
+      !publishData.id
+    ) {
+      console.error(
+        "INSTAGRAM_PUBLISH_ERROR:",
+        publishData
+      );
+
+      throw new Error(
+        publishData?.error?.message ||
+          "Instagram publishing failed."
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        instagram_account_id:
+          instagramBusinessId,
+        username:
+          account.username,
+        creation_id: creationId,
+        media_id: publishData.id,
+      }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type":
+            "application/json",
+        },
+      }
+    );
+  } catch (error: any) {
+    console.error(
+      "INSTAGRAM_POST_ERROR:",
+      error
+    );
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error:
+          error?.message ||
+          "Instagram posting failed.",
+      }),
+      {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          "Content-Type":
+            "application/json",
+        },
+      }
+    );
+  }
+});

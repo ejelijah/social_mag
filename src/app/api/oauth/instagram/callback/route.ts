@@ -1,100 +1,264 @@
+// app/api/oauth/instagram/callback/route.ts
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+const GRAPH_VERSION = "v20.0";
+
+const REDIRECT_URI =
+  "https://omnipost.one/api/oauth/instagram/callback";
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const oauthError = searchParams.get("error");
+  const oauthErrorDescription = searchParams.get("error_description");
+
   const nextPath = "/dir/create";
 
-  if (!code) {
-    return NextResponse.redirect(`${origin}/dashboard?error=no_code_received`);
-  }
-
   try {
-    const supabase = await createClient();
-    
-    // 1. Get User Session
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) throw new Error("User session not found.");
+    // ------------------------------------------------------------
+    // 1. Handle Meta OAuth errors
+    // ------------------------------------------------------------
 
-    // 2. Fetch Elijah's name from your 'users' table
-    // Removed the space in "users" and selected "name"
-    const { data: profile, error: profileError } = await supabase
-      .from("users")
-      .select("name")
-      .eq("id", user.id)
-      .single();
-
-    const displayUserName = profile?.name || "Elijah Ej";
-
-    // 3. Exchange Code for Token
-    const shortLivedParams = new URLSearchParams({
-      client_id: process.env.INSTAGRAM_APP_ID!,
-      client_secret: process.env.INSTAGRAM_APP_SECRET!,
-      grant_type: "authorization_code",
-      redirect_uri: "https://omnipost.one/api/oauth/instagram/callback", 
-      code: code,
-    });
-
-    const shortLivedRes = await fetch("https://api.instagram.com/oauth/access_token", {
-      method: "POST",
-      body: shortLivedParams,
-    });
-
-    const shortLivedData = await shortLivedRes.json();
-    if (!shortLivedRes.ok) throw new Error(shortLivedData.error_message || "Exchange Failed");
-    // 1. Exchange Code for Short-Lived Facebook User Token
-    const tokenRes = await fetch(
-      `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${process.env.FB_APP_ID}&redirect_uri=${encodeURIComponent(origin + '/api/oauth/instagram/callback')}&client_secret=${process.env.FB_APP_SECRET}&code=${code}`
-    );
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok) throw new Error(tokenData.error?.message || "Token Exchange Failed");
-
-    // 4. Upgrade to Long-Lived Token (60 Days)
-    // 2. Upgrade to Long-Lived User Token (60 Days)
-    const longLivedRes = await fetch(
-      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortLivedData.access_token}`,
-    );
-    const longLivedData = await longLivedRes.json();
-    const longLivedToken = longLivedData.access_token;
-
-    // 5. Save to social_accounts
-    // 3. Find the Instagram Business Account ID linked to the user's Pages
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v20.0/me/accounts?fields=instagram_business_account,name&access_token=${longLivedToken}`
-    );
-    const pagesData = await pagesRes.json();
-    
-    // We take the first page that has a linked Instagram Business Account
-    const targetPage = pagesData.data?.find((p: any) => p.instagram_business_account);
-    
-    if (!targetPage) {
-      throw new Error("No Instagram Business Account linked to your Facebook Pages found.");
+    if (oauthError) {
+      throw new Error(
+        oauthErrorDescription ||
+          oauthError ||
+          "Instagram authorization was denied."
+      );
     }
 
-    const igBusinessId = targetPage.instagram_business_account.id;
+    if (!code) {
+      throw new Error("No OAuth authorization code received.");
+    }
 
-    // 4. Upsert to social_accounts
-const { error: upsertError } = await supabase
+    // ------------------------------------------------------------
+    // 2. Verify OAuth state
+    // ------------------------------------------------------------
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      throw new Error("User session not found.");
+    }
+
+    /*
+     * Verify the state cookie.
+     */
+    const cookieState = request.headers
+      .get("cookie")
+      ?.match(/(?:^|;\s*)instagram_oauth_state=([^;]*)/)?.[1];
+
+    if (!state || !cookieState || state !== cookieState) {
+      throw new Error("Invalid OAuth state.");
+    }
+
+    // ------------------------------------------------------------
+    // 3. Exchange Meta authorization code for access token
+    // ------------------------------------------------------------
+
+    const appId = process.env.INSTAGRAM_APP_ID;
+    const appSecret = process.env.INSTAGRAM_APP_SECRET;
+
+    if (!appId || !appSecret) {
+      throw new Error(
+        "INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET is missing."
+      );
+    }
+
+    const tokenParams = new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      redirect_uri: REDIRECT_URI,
+      code,
+    });
+
+    const tokenResponse = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenParams.toString(),
+      }
+    );
+
+    const tokenData = await tokenResponse.json();
+
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      console.error("META_TOKEN_ERROR:", tokenData);
+
+      throw new Error(
+        tokenData?.error?.message ||
+          "Unable to exchange authorization code for access token."
+      );
+    }
+
+    const userAccessToken = tokenData.access_token;
+
+    // ------------------------------------------------------------
+    // 4. Get the Facebook Pages belonging to this Meta user
+    // ------------------------------------------------------------
+
+    const pagesUrl = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`
+    );
+
+    pagesUrl.searchParams.set(
+      "fields",
+      "id,name,access_token,instagram_business_account"
+    );
+
+    pagesUrl.searchParams.set(
+      "access_token",
+      userAccessToken
+    );
+
+    const pagesResponse = await fetch(pagesUrl.toString());
+    const pagesData = await pagesResponse.json();
+
+    if (!pagesResponse.ok) {
+      console.error("META_PAGES_ERROR:", pagesData);
+
+      throw new Error(
+        pagesData?.error?.message ||
+          "Unable to retrieve Facebook Pages."
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 5. Find a Page connected to an Instagram Business account
+    // ------------------------------------------------------------
+
+    const targetPage = pagesData.data?.find(
+      (page: any) => page.instagram_business_account?.id
+    );
+
+    if (!targetPage) {
+      throw new Error(
+        "No Instagram Business account connected to your Facebook Pages was found."
+      );
+    }
+
+    const instagramBusinessAccountId =
+      targetPage.instagram_business_account.id;
+
+    // ------------------------------------------------------------
+    // 6. Get Instagram account information
+    // ------------------------------------------------------------
+
+    const instagramUrl = new URL(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${instagramBusinessAccountId}`
+    );
+
+    instagramUrl.searchParams.set(
+      "fields",
+      "id,username,name,profile_picture_url"
+    );
+
+    /*
+     * For Instagram Business publishing through the Page connection,
+     * use the Page access token returned by /me/accounts.
+     */
+    instagramUrl.searchParams.set(
+      "access_token",
+      targetPage.access_token
+    );
+
+    const instagramResponse = await fetch(
+      instagramUrl.toString()
+    );
+
+    const instagramData = await instagramResponse.json();
+
+    if (!instagramResponse.ok) {
+      console.error(
+        "INSTAGRAM_ACCOUNT_ERROR:",
+        instagramData
+      );
+
+      throw new Error(
+        instagramData?.error?.message ||
+          "Unable to retrieve Instagram Business account."
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 7. Save the connection to Supabase
+    // ------------------------------------------------------------
+
+    const expiresIn =
+      tokenData.expires_in || 60 * 24 * 60 * 60;
+
+    const expiresAt = new Date(
+      Date.now() + expiresIn * 1000
+    ).toISOString();
+
+    const { error: upsertError } = await supabase
       .from("social_accounts")
-      .upsert({
-        user_id: user.id,
-        platform: "instagram",
-        provider: "instagram",
-        access_token: longLivedToken,
-        is_connected: true,
-        expires_at: new Date(Date.now() + (longLivedData.expires_in || 5184000) * 1000).toISOString(),
-        page_id: igBusinessId,
-        username: targetPage.name,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,platform'
-      });
-    return NextResponse.redirect(`${origin}${nextPath}`);
+      .upsert(
+        {
+          user_id: user.id,
+          platform: "instagram",
+          provider: "facebook",
+          access_token: targetPage.access_token,
+          is_connected: true,
+          expires_at: expiresAt,
+          page_id: instagramBusinessAccountId,
+          username:
+            instagramData.username ||
+            targetPage.name ||
+            null,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id,platform",
+        }
+      );
 
-  } catch (err: any) {
-    console.error("INSTAGRAM_ERROR:", err.message);
-    console.error("INSTAGRAM_CALLBACK_ERROR:", err.message);
-    return NextResponse.redirect(`${origin}/dashboard?error=${encodeURIComponent(err.message)}`);
+    if (upsertError) {
+      console.error(
+        "SUPABASE_UPSERT_ERROR:",
+        upsertError
+      );
+
+      throw new Error(
+        `Unable to save Instagram connection: ${upsertError.message}`
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 8. Remove OAuth state cookie and return to OmniPost
+    // ------------------------------------------------------------
+
+    const response = NextResponse.redirect(
+      `${origin}${nextPath}?instagram=connected`
+    );
+
+    response.cookies.delete("instagram_oauth_state");
+
+    return response;
+  } catch (error: any) {
+    console.error("INSTAGRAM_CALLBACK_ERROR:", error);
+
+    const response = NextResponse.redirect(
+      `${origin}/dashboard?error=${encodeURIComponent(
+        error?.message ||
+          "Instagram connection failed."
+      )}`
+    );
+
+    response.cookies.delete("instagram_oauth_state");
+
+    return response;
   }
 }
