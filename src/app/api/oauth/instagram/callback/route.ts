@@ -3,24 +3,27 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-const GRAPH_VERSION = "v20.0";
-
 const REDIRECT_URI =
   "https://omnipost.one/api/oauth/instagram/callback";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams, origin } =
+    new URL(request.url);
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const oauthError = searchParams.get("error");
-  const oauthErrorDescription = searchParams.get("error_description");
+
+  const oauthError =
+    searchParams.get("error");
+
+  const oauthErrorDescription =
+    searchParams.get("error_description");
 
   const nextPath = "/dir/create";
 
   try {
     // ------------------------------------------------------------
-    // 1. Handle Meta OAuth errors
+    // 1. Handle Instagram OAuth errors
     // ------------------------------------------------------------
 
     if (oauthError) {
@@ -32,11 +35,13 @@ export async function GET(request: Request) {
     }
 
     if (!code) {
-      throw new Error("No OAuth authorization code received.");
+      throw new Error(
+        "No Instagram OAuth authorization code received."
+      );
     }
 
     // ------------------------------------------------------------
-    // 2. Verify OAuth state
+    // 2. Verify OmniPost user session
     // ------------------------------------------------------------
 
     const supabase = await createClient();
@@ -47,181 +52,230 @@ export async function GET(request: Request) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      throw new Error("User session not found.");
-    }
-
-    /*
-     * Verify the state cookie.
-     */
-    const cookieState = request.headers
-      .get("cookie")
-      ?.match(/(?:^|;\s*)instagram_oauth_state=([^;]*)/)?.[1];
-
-    if (!state || !cookieState || state !== cookieState) {
-      throw new Error("Invalid OAuth state.");
+      throw new Error(
+        "OmniPost user session not found."
+      );
     }
 
     // ------------------------------------------------------------
-    // 3. Exchange Meta authorization code for access token
+    // 3. Verify OAuth state
     // ------------------------------------------------------------
 
-    const appId = process.env.FACEBOOK_APP_ID;
-    const appSecret = process.env.FACEBOOK_APP_SECRET;
+    const cookieHeader =
+      request.headers.get("cookie") || "";
 
-    if (!appId || !appSecret) {
+    const cookieState = cookieHeader
+      .match(
+        /(?:^|;\s*)instagram_oauth_state=([^;]*)/
+      )?.[1];
+
+    if (
+      !state ||
+      !cookieState ||
+      state !== cookieState
+    ) {
+      throw new Error(
+        "Invalid OAuth state."
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 4. Instagram App credentials
+    // ------------------------------------------------------------
+
+    const instagramAppId =
+      process.env.INSTAGRAM_APP_ID;
+
+    const instagramAppSecret =
+      process.env.INSTAGRAM_APP_SECRET;
+
+    if (
+      !instagramAppId ||
+      !instagramAppSecret
+    ) {
       throw new Error(
         "INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET is missing."
       );
     }
 
-    const tokenParams = new URLSearchParams({
-      client_id: appId,
-      client_secret: appSecret,
-      redirect_uri: REDIRECT_URI,
-      code,
-    });
+    // ------------------------------------------------------------
+    // 5. Exchange authorization code
+    //    for a short-lived Instagram access token
+    // ------------------------------------------------------------
+
+    const tokenParams =
+      new URLSearchParams({
+        client_id: instagramAppId,
+        client_secret: instagramAppSecret,
+        grant_type: "authorization_code",
+        redirect_uri: REDIRECT_URI,
+        code,
+      });
 
     const tokenResponse = await fetch(
-      `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`,
+      "https://api.instagram.com/oauth/access_token",
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type":
+            "application/x-www-form-urlencoded",
         },
         body: tokenParams.toString(),
       }
     );
 
-    const tokenData = await tokenResponse.json();
+    const tokenData =
+      await tokenResponse.json();
 
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error("META_TOKEN_ERROR:", tokenData);
-
-      throw new Error(
-        tokenData?.error?.message ||
-          "Unable to exchange authorization code for access token."
-      );
-    }
-
-    const userAccessToken = tokenData.access_token;
-
-    // ------------------------------------------------------------
-    // 4. Get the Facebook Pages belonging to this Meta user
-    // ------------------------------------------------------------
-
-    const pagesUrl = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`
-    );
-
-    pagesUrl.searchParams.set(
-      "fields",
-      "id,name,access_token,instagram_business_account"
-    );
-
-    pagesUrl.searchParams.set(
-      "access_token",
-      userAccessToken
-    );
-
-    const pagesResponse = await fetch(pagesUrl.toString());
-    const pagesData = await pagesResponse.json();
-
-    if (!pagesResponse.ok) {
-      console.error("META_PAGES_ERROR:", pagesData);
-
-      throw new Error(
-        pagesData?.error?.message ||
-          "Unable to retrieve Facebook Pages."
-      );
-    }
-
-    // ------------------------------------------------------------
-    // 5. Find a Page connected to an Instagram Business account
-    // ------------------------------------------------------------
-
-    const targetPage = pagesData.data?.find(
-      (page: any) => page.instagram_business_account?.id
-    );
-
-    if (!targetPage) {
-      throw new Error(
-        "No Instagram Business account connected to your Facebook Pages was found."
-      );
-    }
-
-    const instagramBusinessAccountId =
-      targetPage.instagram_business_account.id;
-
-    // ------------------------------------------------------------
-    // 6. Get Instagram account information
-    // ------------------------------------------------------------
-
-    const instagramUrl = new URL(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${instagramBusinessAccountId}`
-    );
-
-    instagramUrl.searchParams.set(
-      "fields",
-      "id,username,name,profile_picture_url"
-    );
-
-    /*
-     * For Instagram Business publishing through the Page connection,
-     * use the Page access token returned by /me/accounts.
-     */
-    instagramUrl.searchParams.set(
-      "access_token",
-      targetPage.access_token
-    );
-
-    const instagramResponse = await fetch(
-      instagramUrl.toString()
-    );
-
-    const instagramData = await instagramResponse.json();
-
-    if (!instagramResponse.ok) {
+    if (
+      !tokenResponse.ok ||
+      !tokenData.access_token
+    ) {
       console.error(
-        "INSTAGRAM_ACCOUNT_ERROR:",
-        instagramData
+        "INSTAGRAM_TOKEN_ERROR:",
+        tokenData
       );
 
       throw new Error(
-        instagramData?.error?.message ||
-          "Unable to retrieve Instagram Business account."
+        tokenData?.error_message ||
+          tokenData?.error_type ||
+          "Unable to exchange Instagram authorization code for access token."
       );
     }
 
+    const shortLivedToken =
+      tokenData.access_token;
+
+    const instagramUserId =
+      String(tokenData.user_id);
+
     // ------------------------------------------------------------
-    // 7. Save the connection to Supabase
+    // 6. Exchange short-lived token
+    //    for long-lived Instagram token
     // ------------------------------------------------------------
+
+    const longLivedParams =
+      new URLSearchParams({
+        grant_type:
+          "ig_exchange_token",
+        client_secret:
+          instagramAppSecret,
+        access_token:
+          shortLivedToken,
+      });
+
+    const longLivedResponse =
+      await fetch(
+        `https://graph.instagram.com/access_token?${longLivedParams.toString()}`,
+        {
+          method: "GET",
+        }
+      );
+
+    const longLivedData =
+      await longLivedResponse.json();
+
+    if (
+      !longLivedResponse.ok ||
+      !longLivedData.access_token
+    ) {
+      console.error(
+        "INSTAGRAM_LONG_LIVED_TOKEN_ERROR:",
+        longLivedData
+      );
+
+      throw new Error(
+        longLivedData?.error?.message ||
+          "Unable to obtain long-lived Instagram access token."
+      );
+    }
+
+    const accessToken =
+      longLivedData.access_token;
 
     const expiresIn =
-      tokenData.expires_in || 60 * 24 * 60 * 60;
+      Number(longLivedData.expires_in) ||
+      60 * 24 * 60 * 60;
 
     const expiresAt = new Date(
-      Date.now() + expiresIn * 1000
+      Date.now() +
+        expiresIn * 1000
     ).toISOString();
 
-    const { error: upsertError } = await supabase
+    // ------------------------------------------------------------
+    // 7. Get Instagram profile
+    // ------------------------------------------------------------
+
+    const profileParams =
+      new URLSearchParams({
+        fields:
+          "id,username,name,profile_picture_url",
+        access_token:
+          accessToken,
+      });
+
+    const profileResponse =
+      await fetch(
+        `https://graph.instagram.com/${instagramUserId}?${profileParams.toString()}`,
+        {
+          method: "GET",
+        }
+      );
+
+    const profileData =
+      await profileResponse.json();
+
+    if (!profileResponse.ok) {
+      console.error(
+        "INSTAGRAM_PROFILE_ERROR:",
+        profileData
+      );
+
+      throw new Error(
+        profileData?.error?.message ||
+          "Unable to retrieve Instagram profile."
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 8. Save Instagram connection
+    // ------------------------------------------------------------
+
+    const {
+      error: upsertError,
+    } = await supabase
       .from("social_accounts")
       .upsert(
         {
           user_id: user.id,
+
           platform: "instagram",
-          provider: "facebook",
-          access_token: targetPage.access_token,
+
+          provider: "instagram",
+
+          access_token:
+            accessToken,
+
           is_connected: true,
-          expires_at: expiresAt,
-          page_id: instagramBusinessAccountId,
+
+          expires_at:
+            expiresAt,
+
+          // This is now the Instagram
+          // professional account ID.
+          page_id:
+            instagramUserId,
+
           username:
-            instagramData.username ||
-            targetPage.name ||
+            profileData.username ||
             null,
-          updated_at: new Date().toISOString(),
+
+          updated_at:
+            new Date().toISOString(),
         },
         {
-          onConflict: "user_id,platform",
+          onConflict:
+            "user_id,platform",
         }
       );
 
@@ -237,27 +291,37 @@ export async function GET(request: Request) {
     }
 
     // ------------------------------------------------------------
-    // 8. Remove OAuth state cookie and return to OmniPost
+    // 9. Remove OAuth state cookie
     // ------------------------------------------------------------
 
-    const response = NextResponse.redirect(
-      `${origin}${nextPath}?instagram=connected`
-    );
+    const response =
+      NextResponse.redirect(
+        `${origin}${nextPath}?instagram=connected`
+      );
 
-    response.cookies.delete("instagram_oauth_state");
+    response.cookies.delete(
+      "instagram_oauth_state"
+    );
 
     return response;
-  } catch (error: any) {
-    console.error("INSTAGRAM_CALLBACK_ERROR:", error);
 
-    const response = NextResponse.redirect(
-      `${origin}/dashboard?error=${encodeURIComponent(
-        error?.message ||
-          "Instagram connection failed."
-      )}`
+  } catch (error: any) {
+    console.error(
+      "INSTAGRAM_CALLBACK_ERROR:",
+      error
     );
 
-    response.cookies.delete("instagram_oauth_state");
+    const response =
+      NextResponse.redirect(
+        `${origin}/dashboard?error=${encodeURIComponent(
+          error?.message ||
+            "Instagram connection failed."
+        )}`
+      );
+
+    response.cookies.delete(
+      "instagram_oauth_state"
+    );
 
     return response;
   }
