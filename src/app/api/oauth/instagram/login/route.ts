@@ -54,7 +54,8 @@ export async function GET(request: Request) {
     });
 
     const authUrl =
-      `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
+      `https://api.instagram.com/oauth/authorize?${params.toString()}`;
+
 
     const response = NextResponse.redirect(authUrl);
 
