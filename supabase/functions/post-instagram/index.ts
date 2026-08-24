@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
       .eq("platform", "instagram")
       .single();
 
-    if (accountError || !account) throw new Error("Account not found");
+    if (accountError || !account) throw new Error("Account not found" + user_id);
 
     // FIX: Trim the token and remove any accidental literal quotes
     const accessToken = account.access_token.trim().replace(/^["']|["']$/g, "");
