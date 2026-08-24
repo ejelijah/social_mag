@@ -205,15 +205,22 @@ export default function CreateContent() {
     try {
       for (const platform of selectedPublishPlatforms) {
         const platformKey = platform.toLowerCase();
-        
-        const requestBody = { 
+        const userId = (await supabase.auth.getUser()).data.user?.id;
+      
+        // Base request body for most platforms
+        const requestBody: any = { 
           message: editedContent, 
           link: generatedPost.imageUrl, 
-          mediaPath: generatedPost.mediaPath ,
-          user_id: (await supabase.auth.getUser()).data.user?.id
+          mediaPath: generatedPost.mediaPath,
+          user_id: userId,
+          // This adds the properties only if the platform is youtube
+          ...(platformKey === 'youtube' && {
+            title: editedContent,
+            description: editedContent,
+            video_url: generatedPost.imageUrl
+          })
         };
         
-        // We use 'invoke' but must handle the response body for errors
         const { data, error } = await supabase.functions.invoke(`post-${platformKey}`, { 
           body: requestBody 
         });
