@@ -113,8 +113,8 @@ Deno.serve(async (req) => {
 
     const createParams =
       new URLSearchParams({
-        link,
-        message,
+       image_url: link,
+        caption: message || "",
       });
 
     const createResponse = await fetch(
