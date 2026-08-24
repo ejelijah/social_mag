@@ -27,8 +27,9 @@ Deno.serve(async (req) => {
 
     const {
       user_id,
-      image_url,
-      caption = "",
+      image_url = link,
+      generated_post=mediaPath,
+      caption = message || "",
     } = body;
 
     if (!user_id) {
