@@ -52,12 +52,12 @@ export async function GET(request: Request) {
         platform: 'snapchat',
         provider: 'snapchat',
         access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token || null,
+        refresh_token: tokens.refresh_token || null, // Ensure this is saved for your refresh function
         is_connected: true,
-        username: displayUserName, // Updated to use name from DB
+        username: displayUserName,
         updated_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
-        metadata: JSON.stringify(tokens),
+        metadata: tokens,
       }, { 
         onConflict: 'user_id,platform' 
       });

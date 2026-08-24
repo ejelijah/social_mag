@@ -5,7 +5,6 @@ import crypto from "crypto";
 export async function GET() {
   const cookieStore = await cookies();
 
-  // 1. Generate State and PKCE Verifier
   const state = crypto.randomBytes(16).toString("hex");
   const codeVerifier = crypto.randomBytes(32).toString("base64url");
   const codeChallenge = crypto
@@ -13,7 +12,6 @@ export async function GET() {
     .update(codeVerifier)
     .digest("base64url");
 
-  // 2. Store both in cookies
   cookieStore.set("snap_auth_state", state, {
     httpOnly: true,
     secure: true,
@@ -30,15 +28,23 @@ export async function GET() {
     maxAge: 600,
   });
 
-  // 3. Build the URL with the correct scopes and PKCE challenge
   const authUrl = new URL("https://accounts.snapchat.com/accounts/oauth2/auth");
   authUrl.searchParams.set("client_id", process.env.SNAP_CLIENT_ID!.trim());
   authUrl.searchParams.set("redirect_uri", process.env.SNAP_REDIRECT_URI!);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", "https://auth.snapchat.com/oauth2/api/user.display_name https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar https://auth.snapchat.com/oauth2/api/user.external_id"); // Fixed scopes
+  
+  // CRITICAL: Added snapchat-marketing-api to allow the 'post' functionality to work
+  const scopes = [
+    "https://auth.snapchat.com/oauth2/api/user.display_name",
+    "https://auth.snapchat.com/oauth2/api/user.external_id",
+    "snapchat-marketing-api" 
+  ];
+  authUrl.searchParams.set("scope", scopes.join(" "));
+  
   authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("code_challenge", codeChallenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
 
   return NextResponse.redirect(authUrl.toString());
 }
+
