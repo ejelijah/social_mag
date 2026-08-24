@@ -205,26 +205,30 @@ export default function CreateContent() {
     try {
       for (const platform of selectedPublishPlatforms) {
         const platformKey = platform.toLowerCase();
-        const userId = (await supabase.auth.getUser()).data.user?.id;
+        const userResponse = await supabase.auth.getUser();
+        const userId = userResponse.data.user?.id;
       
-        // Base request body for most platforms
         const requestBody: any = { 
           message: editedContent, 
-          link: generatedPost.imageUrl, 
+          link: generatedPost.imageUrl, // This serves as the media_url
           mediaPath: generatedPost.mediaPath,
           user_id: userId,
-          // This adds the properties only if the platform is youtube
           ...(platformKey === 'youtube' && {
             title: editedContent,
             description: editedContent,
             video_url: generatedPost.imageUrl
+          }),
+          // Optional: Add Snapchat specific overrides here if needed
+          ...(platformKey === 'snapchat' && {
+            caption: editedContent.substring(0, 80) // Snapchat captions are often capped
           })
         };
         
         const { data, error } = await supabase.functions.invoke(`post-${platformKey}`, { 
           body: requestBody 
         });
-  
+    
+      
         // If Supabase returns an error, it's usually in the 'error' object
         if (error) {
           const errorDetails = await error.context.json();
