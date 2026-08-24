@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// ... (keep your imports and corsHeaders the same)
+
 async function refreshSnapchatTokens(supabase: any, user_id: string, refreshToken: string) {
   const response = await fetch("https://accounts.snapchat.com/login/oauth2/access_token", {
     method: "POST",
@@ -18,17 +20,24 @@ async function refreshSnapchatTokens(supabase: any, user_id: string, refreshToke
     }),
   });
 
-  const tokens = await response.json()
-  if (!response.ok) throw new Error(`Snapchat refresh failed: ${tokens.error_description}`);
+  // Check if response is actually JSON before parsing
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    const textError = await response.text();
+    throw new Error(`Snapchat Refresh Error (Non-JSON): ${textError}`);
+  }
+
+  const tokens = await response.json();
+  if (!response.ok) throw new Error(`Snapchat refresh failed: ${tokens.error_description || tokens.error}`);
 
   await supabase.from('social_accounts').update({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token || refreshToken,
     expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('user_id', user_id).eq('platform', 'snapchat')
+  }).eq('user_id', user_id).eq('platform', 'snapchat');
 
-  return tokens.access_token
+  return tokens.access_token;
 }
 
 serve(async (req) => {
@@ -36,21 +45,20 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    
-    // 1. Get request body from Frontend
     const { message, link, user_id } = await req.json();
 
-    // 2. Auth & Token Logic
     const { data: acc } = await supabase.from('social_accounts').select('*').eq('user_id', user_id).eq('platform', 'snapchat').single();
     if (!acc) throw new Error("Snapchat account not linked");
 
     let token = acc.access_token;
     if (new Date(acc.expires_at).getTime() < Date.now() + 300000) {
-      token = await refreshSnapchatTokens(supabase, user_id, acc.refresh_token);
+      try {
+        token = await refreshSnapchatTokens(supabase, user_id, acc.refresh_token);
+      } catch (refreshErr) {
+        throw new Error(`Token refresh failed. The user may need to re-login. Details: ${refreshErr.message}`);
+      }
     }
 
-    // 3. ACTUAL SNAPCHAT POST REQUEST
-    // Note: This uses the Snapchat Marketing/Spotlight API structure
     const snapResponse = await fetch("https://adsapi.snapchat.com/v1/me/spotlight", {
       method: "POST",
       headers: {
@@ -58,28 +66,26 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        "media_url": link,      // The image/video URL from your frontend
-        "caption": message,     // The text content
+        "media_url": link,
+        "caption": message,
         "scheduled_at": new Date().toISOString()
       })
     });
 
-    const snapResult = await snapResponse.json();
+    // Handle non-JSON response from the post request as well
     if (!snapResponse.ok) {
-        throw new Error(`Snapchat API Error: ${JSON.stringify(snapResult)}`);
+      const errorText = await snapResponse.text();
+      throw new Error(`Snapchat API rejected the post: ${errorText}`);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, data: snapResult }), 
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    const snapResult = await snapResponse.json();
+    return new Response(JSON.stringify({ success: true, data: snapResult }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    return new Response(
-      JSON.stringify({ success: false, error: error.message }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    console.error("[Snapchat Error]", error.message);
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 })
+
 
 
