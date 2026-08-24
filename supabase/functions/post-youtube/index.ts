@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 /**
  * Helper function to refresh the YouTube Access Token using the Refresh Token
  */
@@ -22,7 +28,6 @@ async function refreshYoutubeToken(supabase: any, userId: string, refreshToken: 
     throw new Error(`Failed to refresh Google token: ${data.error_description || data.error}`);
   }
 
-  // Update the new access token in your database
   const { error: updateError } = await supabase
     .from("social_accounts")
     .update({ 
@@ -37,16 +42,19 @@ async function refreshYoutubeToken(supabase: any, userId: string, refreshToken: 
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   try {
     const { title, description, video_url, user_id } = await req.json();
 
-    // 1. Initialize Supabase with Service Role Key to bypass RLS for background processing
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 2. Fetch the latest credentials for this user
     const { data: account, error: dbError } = await supabase
       .from("social_accounts")
       .select("*")
@@ -57,18 +65,15 @@ serve(async (req) => {
 
     let accessToken = account.access_token;
 
-    // 3. Check if token is expired (Google tokens last 3600 seconds)
-    // If it was updated more than 50 minutes ago, refresh it to be safe
     const lastUpdated = new Date(account.updated_at).getTime();
     const now = new Date().getTime();
-    const fiveMinutesInMs = 50 * 60 * 1000;
+    const fiftyMinutesInMs = 50 * 60 * 1000;
 
-    if (now - lastUpdated > fiveMinutesInMs && account.refresh_token) {
+    if (now - lastUpdated > fiftyMinutesInMs && account.refresh_token) {
       console.log("DEBUG: Token expired. Refreshing...");
       accessToken = await refreshYoutubeToken(supabase, user_id, account.refresh_token);
     }
 
-    // 4. Initiate Resumable Upload with YouTube
     const initResponse = await fetch(
       "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
       {
@@ -80,7 +85,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           snippet: {
-            title: title.substring(0, 100), // YouTube title limit
+            title: title.substring(0, 100),
             description: description,
             categoryId: "22", 
           },
@@ -94,17 +99,14 @@ serve(async (req) => {
     const uploadUrl = initResponse.headers.get("Location");
     if (!uploadUrl) {
       const errorText = await initResponse.text();
-      // If we get a 401 here, the token refresh logic above might have failed or the token was revoked
       throw new Error(`YouTube Upload Initiation Failed: ${errorText}`);
     }
 
-    // 5. Fetch the video binary from your storage
     const videoResponse = await fetch(video_url);
     if (!videoResponse.ok) throw new Error("Failed to fetch video from storage URL.");
     
     const videoBlob = await videoResponse.blob();
 
-    // 6. Perform the actual binary upload
     const finalResponse = await fetch(uploadUrl, {
       method: "PUT",
       headers: {
@@ -125,7 +127,7 @@ serve(async (req) => {
       youtube_id: finalData.id,
       details: "Upload successful"
     }), { 
-      headers: { "Content-Type": "application/json" } 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
     });
 
   } catch (error) {
@@ -135,7 +137,7 @@ serve(async (req) => {
       error: error.message 
     }), { 
       status: 500,
-      headers: { "Content-Type": "application/json" } 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
     });
   }
 })
