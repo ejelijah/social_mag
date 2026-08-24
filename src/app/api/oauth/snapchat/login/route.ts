@@ -37,8 +37,10 @@ export async function GET() {
   const scopes = [
     "https://auth.snapchat.com/oauth2/api/user.display_name",
     "https://auth.snapchat.com/oauth2/api/user.external_id",
-    "snapchat-marketing-api" 
+    // Remove snapchat-marketing-api and try one of these if available:
+    "https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar"
   ];
+  
   authUrl.searchParams.set("scope", scopes.join(" "));
   
   authUrl.searchParams.set("state", state);
