@@ -209,7 +209,8 @@ export default function CreateContent() {
         const requestBody = { 
           message: editedContent, 
           link: generatedPost.imageUrl, 
-          mediaPath: generatedPost.mediaPath 
+          mediaPath: generatedPost.mediaPath ,
+          user_id: (await supabase.auth.getUser()).data.user?.id
         };
         
         // We use 'invoke' but must handle the response body for errors
