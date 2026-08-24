@@ -20,16 +20,17 @@ async function refreshSnapchatTokens(supabase: any, user_id: string, refreshToke
     throw new Error("Server configuration error");
   }
 
-  const response = await fetch('https://accounts.snapchat.com/accounts/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const response = await fetch("https://accounts.snapchat.com/login/oauth2/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: clientID,
-      client_secret: clientSecret,
+      grant_type: "refresh_token",
       refresh_token: refreshToken,
-      grant_type: 'refresh_token',
+      client_id: Deno.env.get("SNAPCHAT_CLIENT_ID")!,
+      client_secret: Deno.env.get("SNAPCHAT_CLIENT_SECRET")!,
     }),
-  })
+  });
+  
 
   const tokens = await response.json()
   
