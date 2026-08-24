@@ -27,17 +27,17 @@ Deno.serve(async (req) => {
 
     const {
       user_id,
-      image_url = link,
-      generated_post=mediaPath,
-      caption = message || "",
+      link,
+      mediaPath,
+      message,
     } = body;
 
     if (!user_id) {
       throw new Error("user_id is required.");
     }
 
-    if (!image_url) {
-      throw new Error("image_url is required.");
+    if (!link) {
+      throw new Error("link is required.");
     }
 
     // ------------------------------------------------------------
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       user_id,
       page_id: instagramUserId,
       username: account.username,
-      image_url,
+      link,
     });
 
     // ------------------------------------------------------------
@@ -113,8 +113,8 @@ Deno.serve(async (req) => {
 
     const createParams =
       new URLSearchParams({
-        image_url,
-        caption,
+        link,
+        message,
       });
 
     const createResponse = await fetch(
