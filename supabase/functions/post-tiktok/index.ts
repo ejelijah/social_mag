@@ -1,34 +1,80 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-serve(async (req) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] Incoming TikTok Post Request`);
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Function to refresh TikTok tokens if expired
+async function refreshTikTokTokens(supabase, user_id, refreshToken) {
+  const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
+  const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
+
+  const response = await fetch("https://open.tiktokapis.com/v2/auth/token/refresh/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_key: clientKey,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  const text = await response.text();
+  const tokens = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(`TikTok refresh failed: ${tokens.error_description || tokens.error_message || 'Unknown Error'}`);
+  }
+
+  // Update Supabase with new tokens
+  await supabase.from('social_accounts').update({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('user_id', user_id).eq('platform', 'tiktok');
+
+  return tokens.access_token;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { video_url, title, access_token } = await req.json();
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    // 1. Validation Logic
-    if (!access_token) {
-      console.error("DEBUG: Missing access_token");
-      return new Response(JSON.stringify({ error: "Unauthorized: Missing access_token" }), { status: 401 });
+    const bodyText = await req.text();
+    if (!bodyText) throw new Error("Request body is empty");
+    const { video_url, title, user_id } = JSON.parse(bodyText);
+
+    // 1. Fetch TikTok credentials from Supabase
+    const { data: acc, error: dbError } = await supabase
+      .from('social_accounts')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('platform', 'tiktok')
+      .single();
+
+    if (!acc || dbError) throw new Error("TikTok account not linked in Supabase");
+
+    // 2. Check if token needs refreshing (within 5 mins of expiry)
+    let token = acc.access_token;
+    if (new Date(acc.expires_at).getTime() < Date.now() + 300000) {
+      token = await refreshTikTokTokens(supabase, user_id, acc.refresh_token);
     }
 
-    if (!video_url) {
-      console.error("DEBUG: Missing video_url");
-      return new Response(JSON.stringify({ error: "Bad Request: Missing video_url" }), { status: 400 });
-    }
-
-    // 2. Improvement: Title Truncation (TikTok limit is usually around 150-200 chars)
     const safeTitle = title?.substring(0, 150) || "New Video";
 
-    console.log(`DEBUG: Attempting TikTok PULL_FROM_URL for: ${video_url}`);
-    console.log(`DEBUG: Using title: "${safeTitle}"`);
-
-    // 3. TikTok Content Posting API (v2)
+    // 3. TikTok Content Posting API
     const response = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${access_token}`,
+        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json; charset=UTF-8",
       },
       body: JSON.stringify({
@@ -44,45 +90,25 @@ serve(async (req) => {
       }),
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    const result = responseText ? JSON.parse(responseText) : {};
 
-    // 4. Enhanced Error Debugging
     if (!response.ok || result.error) {
-      console.error("DEBUG: TikTok API Error Response:", JSON.stringify(result, null, 2));
-      
-      // TikTok uses custom error codes in their body even if status is 200
-      return new Response(JSON.stringify({
-        success: false,
-        status: response.status,
-        tiktok_error: result.error || "Unknown TikTok Error",
-        message: result.error?.message || "Failed to initialize TikTok post"
-      }), { 
-        status: response.status === 200 ? 400 : response.status,
-        headers: { "Content-Type": "application/json" } 
-      });
+      throw new Error(`TikTok API Error: ${result.error?.message || 'Failed to initialize post'}`);
     }
 
-    console.log("DEBUG: TikTok Success! Publish ID:", result.data?.publish_id);
+    return new Response(
+      JSON.stringify({ success: true, publish_id: result.data?.publish_id }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
-    return new Response(JSON.stringify({
-      success: true,
-      publish_id: result.data?.publish_id,
-      details: result.data
-    }), { 
-      status: 200,
-      headers: { "Content-Type": "application/json" } 
-    });
-
-  } catch (err) {
-    console.error("DEBUG: Critical Edge Function Error:", err.message);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: "Internal Server Error", 
-      message: err.message 
-    }), { 
-      status: 500,
-      headers: { "Content-Type": "application/json" } 
-    });
+  } catch (error) {
+    console.error("TikTok Function Error:", error.message);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 })
+
 
