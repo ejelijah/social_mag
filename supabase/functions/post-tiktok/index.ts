@@ -5,7 +5,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Function to refresh TikTok tokens if expired
+// Helper to safely parse JSON or return the raw text on error
+async function handleResponse(response, context) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (e) {
+    // If parsing fails, it's likely an HTML error page. 
+    // We throw a descriptive error including the status code.
+    throw new Error(`${context} failed (${response.status}). The server returned HTML instead of JSON. Check your API scopes or URL.`);
+  }
+}
+
 async function refreshTikTokTokens(supabase, user_id, refreshToken) {
   const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
   const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
@@ -21,14 +32,12 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
     }),
   });
 
-  const text = await response.text();
-  const tokens = text ? JSON.parse(text) : {};
+  const tokens = await handleResponse(response, "TikTok Token Refresh");
 
   if (!response.ok) {
     throw new Error(`TikTok refresh failed: ${tokens.error_description || tokens.error_message || 'Unknown Error'}`);
   }
 
-  // Update Supabase with new tokens
   await supabase.from('social_accounts').update({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -50,9 +59,16 @@ Deno.serve(async (req) => {
 
     const bodyText = await req.text();
     if (!bodyText) throw new Error("Request body is empty");
-    const { video_url, title, user_id } = JSON.parse(bodyText);
+    
+    let payload;
+    try {
+      payload = JSON.parse(bodyText);
+    } catch (e) {
+      throw new Error("Invalid JSON in request body");
+    }
+    
+    const { video_url, title, user_id } = payload;
 
-    // 1. Fetch TikTok credentials from Supabase
     const { data: acc, error: dbError } = await supabase
       .from('social_accounts')
       .select('*')
@@ -62,7 +78,6 @@ Deno.serve(async (req) => {
 
     if (!acc || dbError) throw new Error("TikTok account not linked in Supabase");
 
-    // 2. Check if token needs refreshing (within 5 mins of expiry)
     let token = acc.access_token;
     if (new Date(acc.expires_at).getTime() < Date.now() + 300000) {
       token = await refreshTikTokTokens(supabase, user_id, acc.refresh_token);
@@ -70,7 +85,6 @@ Deno.serve(async (req) => {
 
     const safeTitle = title?.substring(0, 150) || "New Video";
 
-    // 3. TikTok Content Posting API
     const response = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
       method: "POST",
       headers: {
@@ -90,8 +104,7 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const responseText = await response.text();
-    const result = responseText ? JSON.parse(responseText) : {};
+    const result = await handleResponse(response, "TikTok Video Init");
 
     if (!response.ok || result.error) {
       throw new Error(`TikTok API Error: ${result.error?.message || 'Failed to initialize post'}`);
