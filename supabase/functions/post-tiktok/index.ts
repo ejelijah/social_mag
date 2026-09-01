@@ -21,9 +21,20 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
   const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
   const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
 
-  const response = await fetch("https://open.tiktokapis.com/v2/auth/token/refresh/", {
+  // Check if env vars are missing
+  if (!clientKey || !clientSecret) {
+    throw new Error("Missing TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET in Supabase secrets.");
+  }
+
+  // Removed the trailing slash from the URL
+  const url = "https://open.tiktokapis.com/v2/auth/token/refresh";
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { 
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Cache-Control": "no-cache" 
+    },
     body: new URLSearchParams({
       client_key: clientKey,
       client_secret: clientSecret,
@@ -38,15 +49,19 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
     throw new Error(`TikTok refresh failed: ${tokens.error_description || tokens.error_message || 'Unknown Error'}`);
   }
 
-  await supabase.from('social_accounts').update({
+  // Update Supabase with new tokens
+  const { error: updateError } = await supabase.from('social_accounts').update({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
     updated_at: new Date().toISOString(),
   }).eq('user_id', user_id).eq('platform', 'tiktok');
 
+  if (updateError) throw new Error(`Failed to update Supabase: ${updateError.message}`);
+
   return tokens.access_token;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
