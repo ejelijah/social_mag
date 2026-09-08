@@ -39,7 +39,7 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
     throw new Error("Missing TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET in environment variables.");
   }
 
-  const url = "https://open.tiktokapis.com/v2/auth/token/refresh/";
+  const url = "https://open.tiktokapis.com/v2/oauth/token/";
 
   const response = await fetch(url, {
     method: "POST",
