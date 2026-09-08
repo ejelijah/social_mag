@@ -34,6 +34,9 @@ async function handleResponse(response, context) {
 async function refreshTikTokTokens(supabase, user_id, refreshToken) {
   const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
   const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
+  console.log("Client Key length:", clientKey?.length);
+  console.log("Client Secret length:", clientSecret?.length);
+  console.log("First 3 chars of Key:", clientKey?.substring(0, 3));
 
   if (!clientKey || !clientSecret) {
     throw new Error("Missing TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET in environment variables.");
