@@ -17,6 +17,7 @@ async function handleResponse(response, context) {
   } catch (e) {
     throw new Error(`${context} failed (${response.status}). Server returned HTML/Text instead of JSON.`);
   }
+  let p;
 
   // TikTok V2 Specific Error Handling
   if (!response.ok || json.error) {
