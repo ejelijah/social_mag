@@ -200,39 +200,56 @@ export default function CreateContent() {
     if (!generatedPost || selectedPublishPlatforms.length === 0) return toast.error("Select platforms first.");
     
     setIsLoading(prev => ({ ...prev, publishing: true }));
-    const cleanupPath = generatedPost.mediaPath;
   
     try {
+      const userResponse = await supabase.auth.getUser();
+      const userId = userResponse.data.user?.id;
+  
+      if (!userId) throw new Error("User not authenticated.");
+  
       for (const platform of selectedPublishPlatforms) {
         const platformKey = platform.toLowerCase();
-        const userResponse = await supabase.auth.getUser();
-        const userId = userResponse.data.user?.id;
-      
+        
+        // Construct the body to match what the Edge Functions expect
         const requestBody: any = { 
-          message: editedContent, 
-          link: generatedPost.imageUrl, // This serves as the media_url
-          mediaPath: generatedPost.mediaPath,
           user_id: userId,
+          title: editedContent,           // Used as the caption/title
+          video_url: generatedPost.imageUrl, // Standardized naming for the media link
+          message: editedContent, 
+          mediaPath: generatedPost.mediaPath,
+          
+          // Platform specific overrides
+          ...(platformKey === 'tiktok' && {
+            // TikTok Edge Function specifically looks for video_url and title
+            video_url: generatedPost.imageUrl,
+            title: editedContent.substring(0, 150) // TikTok titles have a limit
+          }),
           ...(platformKey === 'youtube' && {
             title: editedContent,
             description: editedContent,
             video_url: generatedPost.imageUrl
           }),
-          // Optional: Add Snapchat specific overrides here if needed
           ...(platformKey === 'snapchat' && {
-            caption: editedContent.substring(0, 80) // Snapchat captions are often capped
+            caption: editedContent.substring(0, 80)
           })
         };
         
+        console.log(`Publishing to ${platformKey} with body:`, requestBody);
+  
         const { data, error } = await supabase.functions.invoke(`post-${platformKey}`, { 
           body: requestBody 
         });
     
-      
-        // If Supabase returns an error, it's usually in the 'error' object
         if (error) {
-          const errorDetails = await error.context.json();
-          throw new Error(`${platform}: ${errorDetails.error || error.message}`);
+          // Try to get the specific error message from the Edge Function
+          let errorMessage = error.message;
+          try {
+            const errorDetails = await error.context.json();
+            errorMessage = errorDetails.error || errorMessage;
+          } catch (e) {
+            // Fallback if context isn't JSON
+          }
+          throw new Error(`${platform}: ${errorMessage}`);
         }
         
         console.log(`${platform} success:`, data);
@@ -244,7 +261,6 @@ export default function CreateContent() {
   
     } catch (e: any) {
       console.error("Publish Error:", e);
-      // This will now show the ACTUAL message from the Edge Function
       toast.error(e.message || "An unknown error occurred");
     } finally {
       setIsLoading(prev => ({ ...prev, publishing: false }));
