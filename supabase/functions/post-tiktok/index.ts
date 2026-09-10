@@ -42,6 +42,10 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
   if (!clientKey || !clientSecret) {
     throw new Error("Missing TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET in environment variables.");
   }
+  console.log ("Refreshing TikTok token for user_id:", user_id);
+  console.log("Using refresh token:", refreshToken);
+  console.log("Client Key:", clientKey);
+  console.log("Client Secret:", clientSecret);
 
   const url = "https://open.tiktokapis.com/v2/oauth/token/";
 
