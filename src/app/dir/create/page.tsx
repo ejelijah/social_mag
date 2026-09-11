@@ -210,19 +210,26 @@ export default function CreateContent() {
       for (const platform of selectedPublishPlatforms) {
         const platformKey = platform.toLowerCase();
         
+        // TIKTOK FIX: Mask the Supabase URL with your verified domain (omnipost.one)
+        // This works with the /video-assets/* rule you added to your _redirects file.
+        const tiktokReadyUrl = generatedPost.imageUrl.replace(
+          "https://wmozzrxifmwihecsvspr.supabase.co/storage/v1/object/public/post-media",
+          "https://omnipost.one/video-assets"
+        );
+  
         // Construct the body to match what the Edge Functions expect
         const requestBody: any = { 
           user_id: userId,
-          title: editedContent,           // Used as the caption/title
-          video_url: generatedPost.imageUrl, // Standardized naming for the media link
+          title: editedContent,           
+          video_url: generatedPost.imageUrl, // Default Supabase URL for other platforms
           message: editedContent, 
           mediaPath: generatedPost.mediaPath,
           
           // Platform specific overrides
           ...(platformKey === 'tiktok' && {
-            // TikTok Edge Function specifically looks for video_url and title
-            video_url: generatedPost.imageUrl,
-            title: editedContent.substring(0, 150) // TikTok titles have a limit
+            // Use the MASKED URL here to pass TikTok's Domain Ownership Verification
+            video_url: tiktokReadyUrl,
+            title: editedContent.substring(0, 150) 
           }),
           ...(platformKey === 'youtube' && {
             title: editedContent,
@@ -241,7 +248,6 @@ export default function CreateContent() {
         });
     
         if (error) {
-          // Try to get the specific error message from the Edge Function
           let errorMessage = error.message;
           try {
             const errorDetails = await error.context.json();
