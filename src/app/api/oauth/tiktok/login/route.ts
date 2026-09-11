@@ -4,7 +4,7 @@ export async function GET(request: Request) {
   const { origin } = new URL(request.url);
   
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
-  const redirect_uri = `${origin}/api/oauth/tiktok/callback`;
+  const redirect_uri = "https://omnipost.one/api/oauth/tiktok/callback";
   
   // Scopes required for OmniPost AI functionality
   const scopes = [
