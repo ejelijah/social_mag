@@ -33,8 +33,8 @@ async function handleResponse(response, context) {
  * Refreshes the TikTok Access Token and updates the Supabase database.
  */
 async function refreshTikTokTokens(supabase, user_id, refreshToken) {
-  const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
-  const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
+  const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY").trim();
+  const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET").trim();
   console.log("Client Key length:", clientKey?.length);
   console.log("Client Secret length:", clientSecret?.length);
   console.log("First 3 chars of Key:", clientKey?.substring(0, 3));
