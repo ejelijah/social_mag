@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       .eq('id', user.id)
       .single();
 
-    const displayUserName = profile?.name || "Elijah ej";
+    const displayUserName = profile?.name || " ";
 
     const tokenResponse = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
       method: "POST",
