@@ -47,6 +47,20 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
   console.log("Client Key:", clientKey);
   console.log("Client Secret:", clientSecret);
 
+  if (clientKey || clientSecret) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        debug_info: {
+          key_length: clientKey?.length,
+          secret_length: clientSecret?.length,
+          key_starts_with: clientKey?.substring(0, 2)
+        }
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const url = "https://open.tiktokapis.com/v2/oauth/token/";
 
   const response = await fetch(url, {
