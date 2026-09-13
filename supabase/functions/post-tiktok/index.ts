@@ -60,6 +60,7 @@ async function refreshTikTokTokens(supabase, user_id, refreshToken) {
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+  // TikTok V2 Token Refresh Endpoint
 
   const url = "https://open.tiktokapis.com/v2/oauth/token/";
 
